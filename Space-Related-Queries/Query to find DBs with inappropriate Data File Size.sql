@@ -57,10 +57,11 @@ EXEC sp_MSforeachdb '
 				ELSE NULL
 				END 				
 				AS AutoGrowth_MB
+			,type_desc
 	from @DBFiles
-	where physical_name like (@volume+'%')
+	--where physical_name like (@volume+'%')
 )
-SELECT	Consider, DbName, FileName, AutoGrowth, physical_name, CurrentSizeGB, FreeSpaceGB, [% space used], 
+SELECT	Consider, DbName, type_desc, FileName, AutoGrowth, physical_name, CurrentSizeGB, FreeSpaceGB, [% space used], 
 		AutoGrowth_MB,
 		TSQLCode
 		,CASE	WHEN Consider = 'YES' AND (AutoGrowth_MB IS NULL OR AutoGrowth_MB < 512)

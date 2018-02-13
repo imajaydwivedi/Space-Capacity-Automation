@@ -5,7 +5,7 @@
 
 SET NOCOUNT ON;
 
-DECLARE @Path VARCHAR(50) = 'E:\Data\' -- Input 01: Mount Point with \ in last
+DECLARE @Path VARCHAR(50) -- Input 01: Mount Point with \ in last
 		,@FreeSpaceThresholdInPercent FLOAT = 5.0 -- Input 02: Threshold in %. Say, generate shrink command for files to free 10% space on volume
 		,@Generate_TRUNCATEONLY INT = 0
 
@@ -83,14 +83,14 @@ DEALLOCATE database_cursor
 SELECT	@volume_mount_point=s.volume_mount_point, @MountPoint_SizeInGB=s.MountPoint_SizeInGB, @MountPoint_FreeSpaceInGB=s.MountPoint_FreeSpaceInGB, 
 		@MountPoint_PercentFreeSpace=s.MountPoint_PercentFreeSpace, @MountPoint_SizeInMB=s.MountPoint_SizeInMB, @MountPoint_FreeSpaceInMB=s.MountPoint_FreeSpaceInMB
 FROM	#FileSpace s
-WHERE	s.volume_mount_point LIKE @Path+'%'
+--WHERE	s.volume_mount_point LIKE @Path+'%'
 GROUP BY s.volume_mount_point, s.MountPoint_SizeInGB, s.MountPoint_FreeSpaceInGB, s.MountPoint_PercentFreeSpace
 		,s.MountPoint_SizeInMB, s.MountPoint_FreeSpaceInMB;
 
 SET @spaceToBeReleasedAfterShrinking_SizeInMB =	--(required space - free space)
 												(((@FreeSpaceThresholdInPercent * @MountPoint_SizeInMB) / 100) - @MountPoint_FreeSpaceInMB);
 
-PRINT	'/*	**************** Analyzing Mount Point for path '''+@Path+''' **************************
+PRINT	'/*	**************** Analyzing Mount Point for path '''+ISNULL(@Path,'')+''' **************************
 	Total Size = '+cast(@MountPoint_SizeInMB as varchar(20))+ ' MB = '+cast(@MountPoint_SizeInGB as varchar(20))+ ' GB
 	Available Space = '+cast(@MountPoint_FreeSpaceInMB as varchar(20))+ ' MB = '+cast(@MountPoint_FreeSpaceInGB as varchar(20))+ ' GB
 	% Free Space = '+cast(@MountPoint_PercentFreeSpace as varchar(20))+ '
@@ -118,8 +118,8 @@ SELECT	databaseName, name, physical_name, isLogFile, File_SizeInMB,
 		,RowID = ROW_NUMBER()OVER(ORDER BY File_FreeSpaceInMB DESC, File_SizeInMB ASC)
 INTO	#FileSpace_Having5gbOrMore_onPath
 FROM	#FileSpace as s
-WHERE	s.volume_mount_point LIKE @Path+'%'
-	AND	File_FreeSpaceInMB > (1024*5) -- considers files whose free space is greater than 5 gb
+WHERE	File_FreeSpaceInMB > (1024*5) -- considers files whose free space is greater than 5 gb
+	--AND	s.volume_mount_point LIKE @Path+'%'
 ORDER BY File_FreeSpaceInMB DESC, File_SizeInMB ASC;
 
 IF @verbose = 1
