@@ -30,36 +30,36 @@ For best result, always take out help from procedure using @help parameter. Belo
 		Analyze the Data Volume mount points for free space, database files, growth restriction and capacity exception.
 
 	SYNTAX
-		EXEC [dbo].[usp_AnalyzeSpaceCapacity]	[ [@getInfo =] { 1 | 0 } ] [,@DBs2Consider = <comma separated database names>]
-												|
-												@getLogInfo = { 1 | 0 } [,@DBs2Consider = <comma separated database names>]
-												|
-												@volumeInfo = { 1 | 0 }
-												|
-												@help = { 1 | 0 }
-												|
-												@addDataFiles = { 1 | 0 } ,@newVolume = <drive_name>, @oldVolume = <drive_name> [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1] 
-												|
-												@addLogFiles = { 1 | 0 } ,@newVolume = <drive_name>, @oldVolume = <drive_name> [,@allowMultiVolumeUnrestrictedFiles = 1] [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1] 
-												|
-												@restrictDataFileGrowth = { 1 | 0 } ,@oldVolume = <drive_name> [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1]
-												|
-												@restrictLogFileGrowth = { 1 | 0 } ,@oldVolume = <drive_name> [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1]
-												|
-												@generateCapacityException = { 1 | 0 }, @oldVolume = <drive_name>
-												|
-												@unrestrictFileGrowth = { 1 | 0 }, @oldVolume = <drive_name> [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1]
-												|
-												@removeCapacityException = { 1 | 0 }, @oldVolume = <drive_name>
-												|
-												@UpdateMountPointSecurity = { 1 | 0 }
-												|
-												@restrictMountPointGrowth = { 1 | 0}, @oldVolume = <drive_name> [,@mountPointGrowthRestrictionPercent = <value> ] [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1]
-												|
-												@expandTempDBSize = { 1 | 0} [,@tempDBMountPointPercent = <value> ] [,@tempDbMaxSizeThresholdInGB = <value> ] [,@output4IdealScenario = 1] [,@forceExecute = 1]
-												|
-												@getVolumeSpaceConsumers = { 1 | 0}, @oldVolume = <drive_name>
-											  } [;]
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity	[ [@getInfo =] { 1 | 0 } ] [,@DBs2Consider = <comma separated database names>]
+							|
+							@getLogInfo = { 1 | 0 } [,@DBs2Consider = <comma separated database names>]
+							|
+							@volumeInfo = { 1 | 0 }
+							|
+							@help = { 1 | 0 }
+							|
+							@addDataFiles = { 1 | 0 } ,@newVolume = <drive_name>, @oldVolume = <drive_name> [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1] 
+							|
+							@addLogFiles = { 1 | 0 } ,@newVolume = <drive_name>, @oldVolume = <drive_name> [,@allowMultiVolumeUnrestrictedFiles = 1] [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1] 
+							|
+							@restrictDataFileGrowth = { 1 | 0 } ,@oldVolume = <drive_name> [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1]
+							|
+							@restrictLogFileGrowth = { 1 | 0 } ,@oldVolume = <drive_name> [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1]
+							|
+							@generateCapacityException = { 1 | 0 }, @oldVolume = <drive_name>
+							|
+							@unrestrictFileGrowth = { 1 | 0 }, @oldVolume = <drive_name> [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1]
+							|
+							@removeCapacityException = { 1 | 0 }, @oldVolume = <drive_name>
+							|
+							@UpdateMountPointSecurity = { 1 | 0 }
+							|
+							@restrictMountPointGrowth = { 1 | 0}, @oldVolume = <drive_name> [,@mountPointGrowthRestrictionPercent = <value> ] [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1]
+							|
+							@expandTempDBSize = { 1 | 0} [,@tempDBMountPointPercent = <value> ] [,@tempDbMaxSizeThresholdInGB = <value> ] [,@output4IdealScenario = 1] [,@forceExecute = 1]
+							|
+							@getVolumeSpaceConsumers = { 1 | 0}, @oldVolume = <drive_name>
+							[;]
 
 		<drive_name> :: { 'E:\Data\' | 'E:\Data01' | 'E:\Data2' | ... }
 
