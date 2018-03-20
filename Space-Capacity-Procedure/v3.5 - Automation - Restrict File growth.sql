@@ -718,7 +718,8 @@ Get-ChildItem -Path $path -Recurse -File |
 				OR	v.Volume LIKE '[A-Z]:\tempdb\'
 				OR	v.Volume LIKE '[A-Z]:\tempdb[0-9]\'
 				OR	v.Volume LIKE '[A-Z]:\tempdb[0-9][0-9]\'
-				OR	EXISTS (SELECT * FROM sys.master_files as mf WHERE mf.physical_name LIKE (Volume+'%'));
+				OR	EXISTS (SELECT * FROM sys.master_files as mf WHERE mf.physical_name LIKE (Volume+'%'))
+				OR	(@volumeInfo = 1);
 
 			IF @verbose=1
 			BEGIN
