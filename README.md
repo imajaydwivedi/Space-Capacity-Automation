@@ -41,3 +41,19 @@ This parameter is used to display distribution of Log Files across multiple log 
 Below is a sample output:-
 
 ![](images/@getLogInfo_TableResult.JPG)
+
+### Displays Total size, Used Space, Free Space and percentage for all Volumes/disk drives(@volumeInfo)
+
+This parameter is used to display space utilization of all available online disk drives or mounted volumes. This includes Volume, Label, [capacity(GB)], [freespace(GB)], [UsedSpace(GB)], [freespace(%)] and [UsedSpace(%)].
+
+Below is a sample output:-
+
+![](images/@volumeInfo_TableResult.JPG)
+
+### Displays Total size, Used Space, Free Space and percentage for all Volumes/disk drives(@getVolumeSpaceConsumers)
+
+This parameter results all the files and folder including all nested child items for path provided in @oldVolume parameter. This includes IsFolder, Name, Size, TotalChildItems, Owner, CreationTime, LastAccessTime and LastWriteTime.
+
+Below is a sample output:-
+
+![](images/@getVolumeSpaceConsumers_TableResult.jpeg)
