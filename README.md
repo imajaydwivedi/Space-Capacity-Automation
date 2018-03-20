@@ -150,4 +150,18 @@ For best result, always take out help from procedure using @help parameter. Belo
 		This generates TSQL code to re-size log files upto current size with objective to reduce high VLF Counts
 	
 
+### Analyze Data Files Distribution (@getInfo)
 
+This parameter is used to display distribution of Data Files across multiple data volumes. It presents file details like database name, its file groups, db status, logical name and auto growth setting, and volume details like free space and total space. 
+
+Below is a sample output:-
+
+![](images/@getInfo_TableResult.JPG)
+
+### Analyze Log Files Distribution (@getLogInfo)
+
+This parameter is used to display distribution of Log Files across multiple log volumes. It presents file details like database name, db status, logical name, size, auto growth setting and VLF counts, and volume details like free space and total space. 
+
+Below is a sample output:-
+
+![](images/@getLogInfo_TableResult.JPG)
