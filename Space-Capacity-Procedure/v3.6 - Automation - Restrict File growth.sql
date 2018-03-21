@@ -85,7 +85,8 @@ Get-ChildItem -Path $path -Recurse -File |
 	SET @_errorOccurred = 0;
 
 	DECLARE @_powershellCMD VARCHAR(2000);
-	DECLARE	@_addFileSQLText VARCHAR(MAX)
+	DECLARE	@_newVolume VARCHAR(50),
+			@_addFileSQLText VARCHAR(MAX)
 			,@_isServerPartOfMirroring TINYINT
 			,@_mirroringPartner VARCHAR(50)
 			,@_principalDatabaseCounts_Mirroring SMALLINT
@@ -719,7 +720,8 @@ Get-ChildItem -Path $path -Recurse -File |
 				OR	v.Volume LIKE '[A-Z]:\tempdb[0-9]\'
 				OR	v.Volume LIKE '[A-Z]:\tempdb[0-9][0-9]\'
 				OR	EXISTS (SELECT * FROM sys.master_files as mf WHERE mf.physical_name LIKE (Volume+'%'))
-				OR	(@volumeInfo = 1);
+				OR	(@volumeInfo = 1)
+				OR	@newVolume IS NOT NULL;
 
 			IF @verbose=1
 			BEGIN
@@ -739,10 +741,24 @@ Get-ChildItem -Path $path -Recurse -File |
 					EXEC sp_executesql N'RAISERROR (@_errorMSG, 16, 1)', N'@_errorMSG VARCHAR(200)', @_errorMSG;
 			END
 
+			--	if @newVolume value provided is like 'F:\Data\' where as the drive/volume is 'F:\' only	
+			IF NOT EXISTS (SELECT * FROM @mountPointVolumes v WHERE v.Volume = @newVolume)
+			BEGIN
+				-- Save the new volume path provided by user. This will be used in ALTER DATABASE ADD FILE script
+				SET @_newVolume = @newVolume;
+				
+				-- Re-set @newVolume with actual volume means 'F:\' drive in above case
+				SELECT	@newVolume = v2.Volume
+				FROM  (	SELECT MAX(LEN(v.Volume)) AS Max_Volume_Length FROM @mountPointVolumes as v WHERE @_newVolume LIKE (v.Volume+'%') ) as v1
+				INNER JOIN
+						(	SELECT v.Volume FROM @mountPointVolumes as v WHERE @_newVolume LIKE (v.Volume+'%') ) as v2
+					ON	LEN(v2.Volume) = v1.Max_Volume_Length
+			END
+
 			--	Perform free space Validation based on table @mountPointVolumes
 			IF NOT EXISTS (SELECT * FROM @mountPointVolumes v WHERE v.Volume = @newVolume AND v.[freespace(%)] >= 20) AND (@addDataFiles=1 OR @addLogFiles=1) 
 			BEGIN
-				IF NOT EXISTS (SELECT * FROM @mountPointVolumes v WHERE v.Volume = @newVolume)
+				IF NOT EXISTS (SELECT * FROM @mountPointVolumes v WHERE @newVolume LIKE (v.Volume+'%'))
 					SET @_errorMSG = 'Kindly specify correct value for @newVolume as provided mount point volume '+QUOTENAME(@newVolume,'''')+' does not exist';
 				ELSE
 					SET @_errorMSG = 'Available free space on @newVolume='+QUOTENAME(@newVolume,'''')+' is less than 20 percent.';
@@ -995,7 +1011,7 @@ Get-ChildItem -Path $path -Recurse -File |
 								f.FileIDRankPerFileGroup, f.isExistingOn_NewVolume, f.isExisting_UnrestrictedGrowth_on_OtherVolume, d.[Size (GB)]
 								,mf.[_name]
 								--,[_physical_name] = @newVolume+[_name]+'.ldf'
-								,[_physical_name] = @newVolume+[_physicalName]+'.ldf'
+								,[_physical_name] = @_newVolume+[_physicalName]+'.ldf'
 								,u2.Sum_DataFilesSize_MB AS TotalSize_All_DataFiles_MB
 								,u2.Sum_LogsFilesSize_MB AS TotalSize_All_LogFiles_MB
 								,u.maxfileSize_oldVolumes_MB
@@ -1131,7 +1147,7 @@ Get-ChildItem -Path $path -Recurse -File |
 						SELECT	f.dbName, f.database_id, f.file_id, f.type_desc, f.data_space_id, f.name, f.physical_name, f.size, f.max_size, f.growth, f.is_percent_growth, f.fileGroup, 
 								f.FileIDRankPerFileGroup, f.isExistingOn_NewVolume, f.isExisting_UnrestrictedGrowth_on_OtherVolume, d.[Size (GB)]
 								,[_name]
-								,[_physical_name] = @newVolume+[_physicalName]+'.ndf'
+								,[_physical_name] = @_newVolume+[_physicalName]+'.ndf'
 								--,[_physical_name] = @newVolume+[_name]+'.ndf'
 								,u2.Sum_DataFilesSize_MB AS TotalSize_All_DataFiles_MB
 								,u2.Sum_LogsFilesSize_MB AS TotalSize_All_LogFiles_MB
