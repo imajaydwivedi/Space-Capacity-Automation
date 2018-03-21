@@ -29,7 +29,9 @@ BEGIN
 	/*
 		Created By:		Ajay Dwivedi
 		Updated on:		18-Mar-2018
-		Current Ver:	3.5 -	@optimizeLogFiles -- Removes high VLF counts, and set good autogrowth settings
+		Current Ver:	3.6 - a) (Bug) same data/log file appearing in base drive and mounted volume at same time
+								for example:- Model database appearing in E:\MSSQL and E:\ drives both
+							b) @optimizeLogFiles -- Removes high VLF counts, and set good autogrowth settings
 								@releaseSpaceByShrinkingFiles -- Release free space from Data/Log files
 $path = 'E:';
 Get-ChildItem -Path $path -Recurse -File | 
