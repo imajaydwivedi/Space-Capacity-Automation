@@ -26,3 +26,10 @@ OUTER APPLY
 								ON	LEN(v2.Volume) = v1.Max_Volume_Length
 						) as v
 
+
+
+@_newVolume
+
+Kindly specify correct value for @newVolume as provided mount point volume 'F:\Logs\' does not exist
+
+ ADD LOG FILE ( NAME = 
