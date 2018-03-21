@@ -60,3 +60,14 @@ This parameter results all the files and folder including all nested child items
 Below is a sample output:-
 
 ![](images/@getVolumeSpaceConsumers_TableResult.jpeg)
+
+
+### Add Data Files on New Volume (@addDataFiles)
+
+This generates TSQL Code for add secondary data files on @newVolume for each file of @oldVolume per FileGroup.
+
+EXEC [dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newVolume = 'F:\' ,@oldVolume = 'E:\Data\';
+
+<b>Output:-</b>
+
+![](images/@addDataFiles_output.JPG)
