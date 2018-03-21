@@ -43,11 +43,11 @@
     </LogicalFolder>
     <LogicalFolder Name="Queries" Type="0" Sorted="true">
       <Items>
-        <FileNode Name="[dbo].[usp_AnalyzeSpaceCapacity].sql">
+        <FileNode Name="dbo.usp_AnalyzeSpaceCapacity.sql">
           <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:TUL1CIPCNPDB1:True</AssociatedConnectionMoniker>
           <AssociatedConnSrvName>TUL1CIPCNPDB1</AssociatedConnSrvName>
           <AssociatedConnUserName />
-          <FullPath>[dbo].[usp_AnalyzeSpaceCapacity].sql</FullPath>
+          <FullPath>dbo.usp_AnalyzeSpaceCapacity.sql</FullPath>
         </FileNode>
         <FileNode Name="v3.5 - Automation - Restrict File growth.sql">
           <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:TUL1CIPCNPDB1:True</AssociatedConnectionMoniker>
