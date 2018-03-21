@@ -1,4 +1,7 @@
 # Space-Capacity-Automation
+
+<b> [Latest Code of [usp_AnalyzeSpaceCapacity]](Space-Capacity-Procedure/dbo.usp_AnalyzeSpaceCapacity.sql)</b>
+
 ![](images/general_functionalities.JPG)
 
 ### General Info
