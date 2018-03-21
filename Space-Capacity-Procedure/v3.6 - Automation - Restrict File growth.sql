@@ -2045,7 +2045,14 @@ Get-ChildItem -Path $path -Recurse -File |
 						T_Files_Size AS l
 					ON	l.database_id = mf.database_id
 				OUTER APPLY
-					(	SELECT v.Volume FROM @mountPointVolumes AS v WHERE mf.physical_name LIKE (v.Volume+'%')	) AS v
+						(	SELECT	v2.Volume
+							FROM  (	SELECT MAX(LEN(v.Volume)) AS Max_Volume_Length FROM @mountPointVolumes as v WHERE mf.physical_name LIKE (v.Volume+'%') ) as v1
+							INNER JOIN
+								  (	SELECT v.Volume FROM @mountPointVolumes as v WHERE mf.physical_name LIKE (v.Volume+'%') ) as v2
+								ON	LEN(v2.Volume) = v1.Max_Volume_Length
+						) as v
+				--OUTER APPLY
+				--	(	SELECT v.Volume FROM @mountPointVolumes AS v WHERE mf.physical_name LIKE (v.Volume+'%')	) AS v
 				WHERE	mf.type_desc = 'LOG'
 			)
 			,T_Volumes_Derived AS

@@ -1,5 +1,3 @@
-USE tempdb
-GO
 IF OBJECT_ID('dbo.usp_AnalyzeSpaceCapacity') IS NULL
   EXEC ('CREATE PROCEDURE dbo.usp_AnalyzeSpaceCapacity AS RETURN 0;')
 GO
@@ -29,23 +27,7 @@ BEGIN
 	/*
 		Created By:		Ajay Dwivedi
 		Updated on:		18-Mar-2018
-		Current Ver:	3.5 - a) Remove issues when multiple files are there with same logical names
-							b) **Add functionality to handle multiple comma separated @oldVolume names (This would be quite complex)**
-							--@optimizeLogFiles -- Removes high VLF counts, and set good autogrowth settings
-							--@releaseSpaceByShrinkingFiles -- Release free space from Data/Log files
-							--@getVolumeSpaceConsumers -- Get All the files and Folder inside drive with their size, author
-$path = 'E:';
-Get-ChildItem -Path $path -Recurse -File | 
-    Select-Object   Name,
-                    @{l='ParentPath';e={$_.DirectoryName}},
-                    @{l='SizeBytes';e={$_.Length}},
-                    @{l='Owner';e={((Get-ACL $_.FullName).Owner)}},
-                    CreationTime,
-                    LastAccessTime,
-                    LastWriteTime,
-                    @{l='IsFolder';e={if($_.PSIsContainer) {1} else {0}}} |
-        foreach{ $_.Name + '|' + $_.ParentPath + '|' + $_.SizeBytes + '|' + $_.Owner + '|' + $_.CreationTime + '|' + $_.LastAccessTime + '|' + $_.LastWriteTime + '|' + $_.IsFolder }
-
+		Current Ver:	3.5
 		Purpose:		This procedure can be used to generate automatic TSQL code for working with ESCs like 'DBSEP2537- Data- Create and Restrict Database File Names' type.
 	*/
 
@@ -1513,7 +1495,12 @@ Get-ChildItem -Path $path -Recurse -File |
 						T_FileGroup AS fg
 					ON	mf.database_id = fg.database_id AND mf.data_space_id = fg.data_space_id
 				OUTER APPLY
-						( SELECT v.Volume FROM @mountPointVolumes as v WHERE mf.physical_name LIKE (v.Volume+'%') ) as v
+						(	SELECT	v2.Volume
+							FROM  (	SELECT MAX(LEN(v.Volume)) AS Max_Volume_Length FROM @mountPointVolumes as v WHERE mf.physical_name LIKE (v.Volume+'%') ) as v1
+							INNER JOIN
+								  (	SELECT v.Volume FROM @mountPointVolumes as v WHERE mf.physical_name LIKE (v.Volume+'%') ) as v2
+								ON	LEN(v2.Volume) = v1.Max_Volume_Length
+						) as v
 				WHERE	mf.type_desc = 'ROWS'
 			)
 			,T_Files_Usage AS
@@ -2041,7 +2028,14 @@ Get-ChildItem -Path $path -Recurse -File |
 						T_Files_Size AS l
 					ON	l.database_id = mf.database_id
 				OUTER APPLY
-					(	SELECT v.Volume FROM @mountPointVolumes AS v WHERE mf.physical_name LIKE (v.Volume+'%')	) AS v
+						(	SELECT	v2.Volume
+							FROM  (	SELECT MAX(LEN(v.Volume)) AS Max_Volume_Length FROM @mountPointVolumes as v WHERE mf.physical_name LIKE (v.Volume+'%') ) as v1
+							INNER JOIN
+								  (	SELECT v.Volume FROM @mountPointVolumes as v WHERE mf.physical_name LIKE (v.Volume+'%') ) as v2
+								ON	LEN(v2.Volume) = v1.Max_Volume_Length
+						) as v
+				--OUTER APPLY
+				--	(	SELECT v.Volume FROM @mountPointVolumes AS v WHERE mf.physical_name LIKE (v.Volume+'%')	) AS v
 				WHERE	mf.type_desc = 'LOG'
 			)
 			,T_Volumes_Derived AS
