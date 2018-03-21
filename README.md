@@ -64,10 +64,20 @@ Below is a sample output:-
 
 ### Add Data Files on New Volume (@addDataFiles)
 
-This generates TSQL Code for add secondary data files on @newVolume for each file of @oldVolume per FileGroup.
+This generates TSQL Code for add secondary data files on @newVolume for each file of @oldVolume per FileGroup. In case a data file for same database and filegroup already exists on @newVolume, then code is generated to un-restrict the growth of data file on @newVolume.
 
 EXEC [dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newVolume = 'F:\' ,@oldVolume = 'E:\Data\';
 
 <b>Output:-</b>
 
 ![](images/@addDataFiles_output.JPG)
+
+### Add Log Files on New Volume (@addLogFiles)
+This generates TSQL Code for add log files on @newVolume for each log file of @oldVolume. In case a log file for same database already exists on @newVolume, then code is generated to un-restrict the growth of that log file on @newVolume.
+
+EXEC [dbo].[usp_AnalyzeSpaceCapacity] @addLogFiles = 1 ,@newVolume = 'F:\Logs' ,@oldVolume = 'E:\Data\'; 
+
+<b>Output:-</b>
+
+![](images/@addLogFiles_output.JPG)
+
