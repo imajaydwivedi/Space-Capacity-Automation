@@ -49,6 +49,7 @@ Get-ChildItem -Path $path -Recurse -File |
 	*/
 
 	SET NOCOUNT ON;
+	SET ANSI_WARNINGS OFF;
 	
 	IF @verbose = 1
 		PRINT	'Declaring Local Variables';
@@ -967,10 +968,17 @@ Get-ChildItem -Path $path -Recurse -File |
 								,[isExisting_UnrestrictedGrowth_on_OtherVolume] = CASE WHEN NOT EXISTS (
 																					SELECT	mf2.*, NULL as [fileGroup]
 																					FROM	sys.master_files mf2
+																					OUTER APPLY
+																					(	SELECT	v2.Volume
+																						FROM  (	SELECT MAX(LEN(v.Volume)) AS Max_Volume_Length FROM @mountPointVolumes as v WHERE mf2.physical_name LIKE (v.Volume+'%') ) as v1
+																						INNER JOIN
+																							  (	SELECT v.Volume FROM @mountPointVolumes as v WHERE mf2.physical_name LIKE (v.Volume+'%') ) as v2
+																							ON	LEN(v2.Volume) = v1.Max_Volume_Length
+																					) as v
 																					WHERE	mf2.type_desc = mf1.type_desc
 																						AND	mf2.database_id = mf1.database_id
 																						AND mf2.growth <> 0
-																						AND LEFT(mf2.physical_name, CHARINDEX('\',mf2.physical_name,4)) IN (select V.Volume from @mountPointVolumes V WHERE V.Volume <> @oldVolume AND [freespace(%)] >= 20.0)
+																						AND v.Volume IN (select vi.Volume from @mountPointVolumes as vi WHERE vi.Volume <> @oldVolume AND [freespace(%)] >= 20.0)
 																				)
 																THEN 0
 																ELSE 1
@@ -1094,11 +1102,18 @@ Get-ChildItem -Path $path -Recurse -File |
 								,[isExisting_UnrestrictedGrowth_on_OtherVolume] = CASE WHEN EXISTS (
 																					SELECT	mf2.*, NULL as [fileGroup]
 																					FROM	sys.master_files mf2
+																					OUTER APPLY
+																						(	SELECT	v2.Volume
+																							FROM  (	SELECT MAX(LEN(v.Volume)) AS Max_Volume_Length FROM @mountPointVolumes as v WHERE mf2.physical_name LIKE (v.Volume+'%') ) as v1
+																							INNER JOIN
+																								  (	SELECT v.Volume FROM @mountPointVolumes as v WHERE mf2.physical_name LIKE (v.Volume+'%') ) as v2
+																								ON	LEN(v2.Volume) = v1.Max_Volume_Length
+																						) as v
 																					WHERE	mf2.type_desc = mf1.type_desc
 																						AND	mf2.database_id = mf1.database_id
 																						AND mf2.data_space_id = mf1.data_space_id -- same filegroup
 																						AND mf2.growth <> 0
-																						AND LEFT(mf2.physical_name, CHARINDEX('\',mf2.physical_name,4)) IN (select Volume from @mountPointVolumes V WHERE V.Volume <> @oldVolume AND [freespace(%)] >= 20.0)
+																						AND v.Volume IN (select Volume from @mountPointVolumes as vi WHERE vi.Volume <> @oldVolume AND [freespace(%)] >= 20.0)
 																				)
 																THEN 1
 																ELSE 0
@@ -1503,8 +1518,8 @@ Get-ChildItem -Path $path -Recurse -File |
 				SELECT	mf.file_id, mf.database_id as [DB_ID], DB_NAME(mf.database_id) AS [DB_Name], fg.[TotalFilesSize(GB)], fg.[FileGroup]
 						,growth 
 						,(CASE WHEN growth = 0 THEN '0' WHEN is_percent_growth = 1 THEN CAST(growth AS VARCHAR(5))+'%' 
-						ELSE CAST(CONVERT( DECIMAL(20,2),((growth*8.0)/1024.0)) AS VARCHAR(20))+'(MB)'
-						END) AS [growth(GB)]
+						ELSE CAST(CONVERT( DECIMAL(20,2),((growth*8.0)/1024.0)) AS VARCHAR(20))+' mb'
+						END) AS [growth(MB)]
 						,name as [FileName] 
 						,v.Volume  as [Volume] 
 				FROM	sys.master_files AS mf
@@ -1547,9 +1562,9 @@ Get-ChildItem -Path $path -Recurse -File |
 			( 
 				SELECT	DB_ID, DB_Name, [TotalFilesSize(GB)], [FileGroup], 
 						--f.FileName+' (Growth by '+[growth(GB)]+')' AS FileSettings, 
-						f.[FileName]+' (Size|% Used|AutoGrowth :: '+size+'|'+CAST([% space used] AS VARCHAR(50))+' %|'+[growth(GB)]+')' AS FileSettings, 
+						f.[FileName]+' (Size|% Used|AutoGrowth :: '+size+'|'+CAST([% space used] AS VARCHAR(50))+' %|'+[growth(MB)]+')' AS FileSettings, 
 						v.VolumeName+'['+v.Volume+']'+' = '+CAST([freespace(GB)] AS VARCHAR(20))+'GB('+CAST([freespace(%)] AS VARCHAR(20))+'%) Free of '+CAST([capacity(GB)] AS VARCHAR(20))+' GB' as FileDrive
-						,f.growth, f.[growth(GB)], f.[FileName], v.Volume, [capacity(MB)], [freespace(MB)], VolumeName, [capacity(GB)], [freespace(GB)], [freespace(%)]
+						,f.growth, f.[growth(MB)], f.[FileName], v.Volume, [capacity(MB)], [freespace(MB)], VolumeName, [capacity(GB)], [freespace(GB)], [freespace(%)]
 						,ROW_NUMBER()OVER(PARTITION BY v.Volume, f.DB_Name, f.[FileGroup] ORDER BY f.[file_id])AS FileID
 				FROM	T_Files_Filegroups AS f
 				LEFT JOIN
@@ -1567,7 +1582,7 @@ Get-ChildItem -Path $path -Recurse -File |
 								 WHERE f2.Volume = f.Volume AND f2.DB_Name = f.DB_Name AND f2.FileGroup = f.FileGroup
 								 FOR XML PATH (''))
 								  , 1, 1, ''
-							) AS Files, FileDrive, growth, [growth(GB)], FileName, Volume, [capacity(MB)], [freespace(MB)], VolumeName, [capacity(GB)], [freespace(GB)], [freespace(%)], FileID
+							) AS Files, FileDrive, growth, [growth(MB)], FileName, Volume, [capacity(MB)], [freespace(MB)], VolumeName, [capacity(GB)], [freespace(GB)], [freespace(%)], FileID
 				FROM	T_Files as f LEFT OUTER JOIN sys.databases as d 
 					ON	d.name = f.DB_Name
 				WHERE	f.FileID = 1
@@ -2589,6 +2604,7 @@ Get-ChildItem -Path $path -Recurse -File |
 
 				--	Find if data files to be added for [uhtdba]
 				IF EXISTS (SELECT * FROM @mountPointVolumes AS v WHERE v.Volume = @oldVolume AND v.[freespace(GB)] >= @mountPointFreeSpaceThreshold_GB)
+						AND EXISTS (SELECT * FROM sys.databases as d WHERE d.database_id = DB_ID('uhtdba'))
 				BEGIN
 					SET @_errorMSG = '/*	NOTE: Data file for [uhtdba] database is not being created since @oldVolume '+QUOTENAME(@oldVolume,'''') + ' has more than '+CAST(@mountPointFreeSpaceThreshold_GB AS VARCHAR(10))+' gb of free space.	*/';
 					IF @forceExecute = 0 -- Ignore this message if @forceExecute = 1 since this is information only message
@@ -2998,6 +3014,7 @@ SELECT * FROM #T_Files_Final WHERE NOT (isExistingOn_NewVolume = 1 OR IsExisting
 
 				--	Find if log files to be added for [uhtdba] & [tempdb]
 				IF EXISTS (SELECT * FROM @mountPointVolumes AS v WHERE v.Volume = @oldVolume AND v.[freespace(GB)] >= @mountPointFreeSpaceThreshold_GB)
+					AND EXISTS (SELECT * FROM sys.databases as d WHERE d.database_id = DB_ID('uhtdba'))
 				BEGIN
 					SET @_errorMSG = '/*	NOTE: Log file for [uhtdba] and [tempdb] databases is not being created since @oldVolume '+QUOTENAME(@oldVolume,'''') + ' has more than '+cast(@mountPointFreeSpaceThreshold_GB as varchar(20))+' gb of free space.	*/';
 					IF @forceExecute = 0 -- Ignore this message if @forceExecute = 1 since this is information only message
