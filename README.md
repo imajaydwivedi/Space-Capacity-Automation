@@ -72,6 +72,10 @@ EXEC [dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newVolume = 'F:\' ,@ol
 
 ![](images/@addDataFiles_output.JPG)
 
+If we execute above query with one extra parameter @forceExecute = 1, then rather than generating TSQL code, the generated TSQL script are executed in background and presented with final output message showing each script executed, database and filegroup names, and success/failure message.  Below is sample screenshot:-
+
+![](images/@addDataFiles_with_@forceExecute_output.JPG)
+
 ### Add Log Files on New Volume (@addLogFiles)
 This generates TSQL Code for add log files on @newVolume for each log file of @oldVolume. In case a log file for same database already exists on @newVolume, then code is generated to un-restrict the growth of that log file on @newVolume.
 
