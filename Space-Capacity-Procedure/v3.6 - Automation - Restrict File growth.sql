@@ -22,7 +22,7 @@ SELECT CASE WHEN @_errorOccurred = 1 THEN 'fail' ELSE 'pass' END AS [Pass/Fail];
 */
 ALTER PROCEDURE [dbo].[usp_AnalyzeSpaceCapacity]
 	@getInfo BIT = 0, @getLogInfo BIT = 0, @volumeInfo BIT = 0, @help BIT = 0, @addDataFiles BIT = 0, @addLogFiles BIT = 0, @restrictDataFileGrowth BIT = 0, @restrictLogFileGrowth BIT = 0, @generateCapacityException BIT = 0, @unrestrictFileGrowth BIT = 0, @removeCapacityException BIT = 0, @UpdateMountPointSecurity BIT = 0, @restrictMountPointGrowth BIT = 0, @expandTempDBSize BIT = 0, @optimizeLogFiles BIT = 0, @getVolumeSpaceConsumers BIT = 0,
-	@newVolume VARCHAR(50) = NULL, @oldVolume VARCHAR(200) = NULL, @mountPointGrowthRestrictionPercent TINYINT = 79, @tempDBMountPointPercent TINYINT = NULL, @tempDbMaxSizeThresholdInGB INT = NULL, @DBs2Consider VARCHAR(1000) = NULL, @mountPointFreeSpaceThreshold_GB INT = 60
+	@newVolume VARCHAR(200) = NULL, @oldVolume VARCHAR(200) = NULL, @mountPointGrowthRestrictionPercent TINYINT = 79, @tempDBMountPointPercent TINYINT = NULL, @tempDbMaxSizeThresholdInGB INT = NULL, @DBs2Consider VARCHAR(1000) = NULL, @mountPointFreeSpaceThreshold_GB INT = 60
 	,@verbose BIT = 0 ,@testAllOptions BIT = 0 ,@forceExecute BIT = 0 ,@allowMultiVolumeUnrestrictedFiles BIT = 0 ,@output4IdealScenario BIT = 0
 AS
 BEGIN
@@ -85,7 +85,7 @@ Get-ChildItem -Path $path -Recurse -File |
 	SET @_errorOccurred = 0;
 
 	DECLARE @_powershellCMD VARCHAR(2000);
-	DECLARE	@_newVolume VARCHAR(50),
+	DECLARE	@_newVolume VARCHAR(200),
 			@_addFileSQLText VARCHAR(MAX)
 			,@_isServerPartOfMirroring TINYINT
 			,@_mirroringPartner VARCHAR(50)
@@ -128,7 +128,8 @@ Get-ChildItem -Path $path -Recurse -File |
 			,@_SpaceToBeFreed_MB DECIMAL(20,2)
 			--,@_helpText VARCHAR(MAX)
 			,@_sqlText NVARCHAR(4000) -- Can be used for any dynamic queries
-			,@_procSTMT_Being_Executed VARCHAR(2000);
+			,@_procSTMT_Being_Executed VARCHAR(2000)
+			,@_dbaMaintDatabase varchar(255);
 
 	DECLARE	@_logicalCores TINYINT
 			,@_fileCounts TINYINT
@@ -205,6 +206,7 @@ Get-ChildItem -Path $path -Recurse -File |
 	SET @_counts_of_Files_To_Be_Created = 0;
 	SET @_jobTimeThreshold_in_Hrs = NULL; -- Set threshold hours to 18 here
 	SELECT @_oldVolumesSpecified = CASE WHEN (@oldVolume IS NOT NULL) AND (CHARINDEX(',',@oldVolume)<>0) THEN @oldVolume ELSE NULL END;
+	SET @_dbaMaintDatabase = 'uhtdba';
 
 	IF @verbose=1 
 		PRINT	'Declaring Table Variables';
@@ -754,6 +756,10 @@ Get-ChildItem -Path $path -Recurse -File |
 						(	SELECT v.Volume FROM @mountPointVolumes as v WHERE @_newVolume LIKE (v.Volume+'%') ) as v2
 					ON	LEN(v2.Volume) = v1.Max_Volume_Length
 			END
+			ELSE
+			BEGIN
+				SET @_newVolume = @newVolume;
+			END
 
 			--	Perform free space Validation based on table @mountPointVolumes
 			IF NOT EXISTS (SELECT * FROM @mountPointVolumes v WHERE v.Volume = @newVolume AND v.[freespace(%)] >= 20) AND (@addDataFiles=1 OR @addLogFiles=1) 
@@ -1140,13 +1146,17 @@ Get-ChildItem -Path $path -Recurse -File |
 						WHERE	mf1.type_desc = 'rows'
 							AND	mf1.physical_name LIKE (@oldVolume+'%')
 					)	--select 'Testing',* from T_Files;
+					
 						INSERT #T_Files_Derived
 						(	dbName, database_id, file_id, type_desc, data_space_id, name, physical_name, size, max_size, growth, is_percent_growth, fileGroup, 
 							FileIDRankPerFileGroup, isExistingOn_NewVolume, isExisting_UnrestrictedGrowth_on_OtherVolume, [Size (GB)], _name, _physical_name, TotalSize_All_DataFiles_MB, TotalSize_All_LogFiles_MB, maxfileSize_oldVolumes_MB, TSQL_AddFile, TSQL_RestrictFileGrowth, TSQL_UnRestrictFileGrowth
 						)
+					
 						SELECT	f.dbName, f.database_id, f.file_id, f.type_desc, f.data_space_id, f.name, f.physical_name, f.size, f.max_size, f.growth, f.is_percent_growth, f.fileGroup, 
 								f.FileIDRankPerFileGroup, f.isExistingOn_NewVolume, f.isExisting_UnrestrictedGrowth_on_OtherVolume, d.[Size (GB)]
 								,[_name]
+								--,[@_newVolume] = @_newVolume
+								--,[_physicalName  ] = [_physicalName]
 								,[_physical_name] = @_newVolume+[_physicalName]+'.ndf'
 								--,[_physical_name] = @newVolume+[_name]+'.ndf'
 								,u2.Sum_DataFilesSize_MB AS TotalSize_All_DataFiles_MB
@@ -2617,12 +2627,19 @@ Get-ChildItem -Path $path -Recurse -File |
 				DELETE @T_Files_Final_Add;
 				INSERT @T_Files_Final_Add (TSQL_AddFile,DBName,[fileGroup],name,_name)
 				SELECT TSQL_AddFile,DBName,[fileGroup],name,_name FROM #T_Files_Final as f WHERE isExistingOn_NewVolume = 0 AND isExisting_UnrestrictedGrowth_on_OtherVolume = 0 AND [FileIDRankPerFileGroup] = 1 ORDER BY f.DBName;
-
-				--	Find if data files to be added for [uhtdba]
-				IF EXISTS (SELECT * FROM @mountPointVolumes AS v WHERE v.Volume = @oldVolume AND v.[freespace(GB)] >= @mountPointFreeSpaceThreshold_GB)
-						AND EXISTS (SELECT * FROM sys.databases as d WHERE d.database_id = DB_ID('uhtdba'))
+				
+				IF @verbose = 1 
 				BEGIN
-					SET @_errorMSG = '/*	NOTE: Data file for [uhtdba] database is not being created since @oldVolume '+QUOTENAME(@oldVolume,'''') + ' has more than '+CAST(@mountPointFreeSpaceThreshold_GB AS VARCHAR(10))+' gb of free space.	*/';
+						PRINT	'	Checking the data of @T_Files_Final_Add table that is used for Adding new files in last step.';
+						SELECT	'	SELECT * FROM @T_Files_Final_Add' AS RunningQuery, * 
+						FROM	@T_Files_Final_Add;
+				END
+
+				--	Find if data files to be added for @_dbaMaintDatabase
+				IF EXISTS (SELECT * FROM @mountPointVolumes AS v WHERE v.Volume = @oldVolume AND v.[freespace(GB)] >= @mountPointFreeSpaceThreshold_GB)
+						AND EXISTS (SELECT * FROM sys.databases as d WHERE d.database_id = DB_ID(@_dbaMaintDatabase))
+				BEGIN
+					SET @_errorMSG = '/*	NOTE: Data file for @_dbaMaintDatabase database is not being created since @oldVolume '+QUOTENAME(@oldVolume,'''') + ' has more than '+CAST(@mountPointFreeSpaceThreshold_GB AS VARCHAR(10))+' gb of free space.	*/';
 					IF @forceExecute = 0 -- Ignore this message if @forceExecute = 1 since this is information only message
 						PRINT @_errorMSG;
 					ELSE
@@ -2631,7 +2648,7 @@ Get-ChildItem -Path $path -Recurse -File |
 						INSERT @OutputMessages
 							(Status, Category, DBName, FileGroup, FileName, MessageDetails, TSQLCode)
 						SELECT	'Information' AS Status
-								,'No action taken for [uhtdba]' AS Category
+								,'No action taken for ['+@_dbaMaintDatabase+']' AS Category
 								,NULL AS  DBName
 								,NULL AS [FileGroup]
 								,NULL AS [FileName]
@@ -2640,14 +2657,14 @@ Get-ChildItem -Path $path -Recurse -File |
 					END
 
 					DELETE FROM @T_Files_Final_Add
-						WHERE DBName = 'uhtdba';
+						WHERE DBName = @_dbaMaintDatabase;
 					DELETE FROM #T_Files_Final
-						WHERE DBName = 'uhtdba';
+						WHERE DBName = @_dbaMaintDatabase;
 				END
 
 				IF @verbose = 1 
 					PRINT	'	Initiating @_loopCounter and @_loopCounts';
-				SELECT @_loopCounter=MIN(ID), @_loopCounts=MAX(ID) FROM	@T_Files_Final_Add;
+				SELECT @_loopCounter=MIN(ID), @_loopCounts=MAX(ID) FROM	@T_Files_Final_Add WHERE DBName NOT IN ('master','model','msdb','tempdb');
 			
 				IF @verbose=1 
 					PRINT	'9.3) Inside Begin:	@addDataFiles = 1 - Starting to print Data File Addition Code in loop';
@@ -3028,11 +3045,11 @@ SELECT * FROM #T_Files_Final WHERE NOT (isExistingOn_NewVolume = 1 OR IsExisting
 				INSERT @T_LogFiles_Final_Add (TSQL_AddFile,DBName,name,_name)
 				SELECT TSQL_AddFile,DBName,name,_name FROM #T_Files_Final as f WHERE isExistingOn_NewVolume = 0 AND [FileIDRankPerFileGroup] = 1 AND isExisting_UnrestrictedGrowth_on_OtherVolume = 0 ORDER BY f.dbName;
 
-				--	Find if log files to be added for [uhtdba] & [tempdb]
+				--	Find if log files to be added for @_dbaMaintDatabase & [tempdb]
 				IF EXISTS (SELECT * FROM @mountPointVolumes AS v WHERE v.Volume = @oldVolume AND v.[freespace(GB)] >= @mountPointFreeSpaceThreshold_GB)
-					AND EXISTS (SELECT * FROM sys.databases as d WHERE d.database_id = DB_ID('uhtdba'))
+					AND EXISTS (SELECT * FROM sys.databases as d WHERE d.database_id = DB_ID(@_dbaMaintDatabase))
 				BEGIN
-					SET @_errorMSG = '/*	NOTE: Log file for [uhtdba] and [tempdb] databases is not being created since @oldVolume '+QUOTENAME(@oldVolume,'''') + ' has more than '+cast(@mountPointFreeSpaceThreshold_GB as varchar(20))+' gb of free space.	*/';
+					SET @_errorMSG = '/*	NOTE: Log file for @_dbaMaintDatabase and [tempdb] databases is not being created since @oldVolume '+QUOTENAME(@oldVolume,'''') + ' has more than '+cast(@mountPointFreeSpaceThreshold_GB as varchar(20))+' gb of free space.	*/';
 					IF @forceExecute = 0 -- Ignore this message if @forceExecute = 1 since this is information only message
 						PRINT @_errorMSG;
 					ELSE
@@ -3041,7 +3058,7 @@ SELECT * FROM #T_Files_Final WHERE NOT (isExistingOn_NewVolume = 1 OR IsExisting
 						INSERT @OutputMessages
 							(Status, Category, DBName, FileGroup, FileName, MessageDetails, TSQLCode)
 						SELECT	'Information' AS Status
-								,'No action taken for [uhtdba] and [tempdb]' AS Category
+								,'No action taken for ['+@_dbaMaintDatabase+'] and [tempdb]' AS Category
 								,NULL AS  DBName
 								,NULL AS [FileGroup]
 								,NULL AS [FileName]
@@ -3050,7 +3067,7 @@ SELECT * FROM #T_Files_Final WHERE NOT (isExistingOn_NewVolume = 1 OR IsExisting
 					END
 
 					DELETE FROM @T_LogFiles_Final_Add
-						WHERE DBName IN ('uhtdba','tempdb');
+						WHERE DBName IN (@_dbaMaintDatabase,'tempdb');
 				END
 
 				IF @verbose = 1
@@ -3815,7 +3832,7 @@ Kindly use @restrictMountPointGrowth functionality to increase the space utiliza
 			
 		END -- End block for Validation of Data volumes
 		--
-		IF EXISTS (SELECT f.dbName, f.data_space_id FROM #T_Files_Final AS f WHERE f.dbName NOT IN ('uhtdba','tempdb') AND f.growth <> 0 GROUP BY f.dbName, f.data_space_id)
+		IF EXISTS (SELECT f.dbName, f.data_space_id FROM #T_Files_Final AS f WHERE f.dbName NOT IN (@_dbaMaintDatabase,'tempdb') AND f.growth <> 0 GROUP BY f.dbName, f.data_space_id)
 		BEGIN	--	Check if all the files are set to 0 auto growth
 			SET @_errorMSG = 'Kindly restrict the data/log files on @oldVolume before using @generateCapacityException option.';
 			IF (select CAST(LEFT(CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)),charindex('.',CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)))-1) AS INT)) >= 12
