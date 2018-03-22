@@ -77,6 +77,7 @@ If we execute above query with one extra parameter <b>@forceExecute = 1</b>, the
 ![](images/@addDataFiles_with_@forceExecute_output.JPG)
 
 ### Add Log Files on New Volume (@addLogFiles)
+
 This generates TSQL Code for add log files on @newVolume for each log file of @oldVolume. In case a log file for same database already exists on @newVolume, then code is generated to un-restrict the growth of that log file on @newVolume.
 
 EXEC [dbo].[usp_AnalyzeSpaceCapacity] @addLogFiles = 1 ,@newVolume = 'F:\Logs' ,@oldVolume = 'E:\Data\'; 
@@ -85,3 +86,14 @@ EXEC [dbo].[usp_AnalyzeSpaceCapacity] @addLogFiles = 1 ,@newVolume = 'F:\Logs' ,
 
 ![](images/@addLogFiles_output.JPG)
 
+### Restrict Data Files (@restrictDataFileGrowth)
+
+This generates TSQL Code to restrict growth of data files on @oldVolume if alternate data files with un-restricted growth are present on other volumes.
+
+EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictDataFileGrowth = 1 ,@oldVolume = 'E:\Data\';
+
+EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictDataFileGrowth = 1 ,@oldVolume = 'E:\Data\' ,@forceExecute = 1;
+
+<b>Output:-</b>
+
+![](images/@restrictDataFileGrowth_output.JPG)
