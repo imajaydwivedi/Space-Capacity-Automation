@@ -23,7 +23,7 @@ SELECT CASE WHEN @_errorOccurred = 1 THEN 'fail' ELSE 'pass' END AS [Pass/Fail];
 ALTER PROCEDURE [dbo].[usp_AnalyzeSpaceCapacity]
 	@getInfo BIT = 0, @getLogInfo BIT = 0, @volumeInfo BIT = 0, @help BIT = 0, @addDataFiles BIT = 0, @addLogFiles BIT = 0, @restrictDataFileGrowth BIT = 0, @restrictLogFileGrowth BIT = 0, @generateCapacityException BIT = 0, @unrestrictFileGrowth BIT = 0, @removeCapacityException BIT = 0, @UpdateMountPointSecurity BIT = 0, @restrictMountPointGrowth BIT = 0, @expandTempDBSize BIT = 0, @optimizeLogFiles BIT = 0, @getVolumeSpaceConsumers BIT = 0,
 	@newVolume VARCHAR(200) = NULL, @oldVolume VARCHAR(200) = NULL, @mountPointGrowthRestrictionPercent TINYINT = 79, @tempDBMountPointPercent TINYINT = NULL, @tempDbMaxSizeThresholdInGB INT = NULL, @DBs2Consider VARCHAR(1000) = NULL, @mountPointFreeSpaceThreshold_GB INT = 60
-	,@verbose BIT = 0 ,@testAllOptions BIT = 0 ,@forceExecute BIT = 0 ,@allowMultiVolumeUnrestrictedFiles BIT = 0 ,@output4IdealScenario BIT = 0
+	,@verbose BIT = 0 ,@testAllOptions BIT = 0 ,@forceExecute BIT = 0 ,@allowMultiVolumeUnrestrictedFiles BIT = 0 ,@output4IdealScenario BIT = 0, @handleXPCmdShell BIT = 0
 AS
 BEGIN
 	/*
@@ -84,6 +84,7 @@ Get-ChildItem -Path $path -Recurse -File |
 	DECLARE	@_errorOccurred BIT 
 	SET @_errorOccurred = 0;
 
+	DECLARE @_configurationValue_CmdShell TINYINT;
 	DECLARE @_powershellCMD VARCHAR(2000);
 	DECLARE	@_newVolume VARCHAR(200),
 			@_addFileSQLText VARCHAR(MAX)
@@ -624,6 +625,32 @@ Get-ChildItem -Path $path -Recurse -File |
 				)
 				INSERT @filterDatabaseNames
 				SELECT LTRIM(RTRIM(DBName)) FROM t1;
+			END
+
+			--	Check if xp_cmdshell has to be enabled
+			IF (@handleXPCmdShell = 1)
+			BEGIN
+				select @_configurationValue_CmdShell = CAST(value AS TINYINT) from sys.configurations as c where c.name = 'xp_cmdshell';
+
+				IF @verbose = 1
+				BEGIN
+					IF (@_configurationValue_CmdShell = 0)
+						PRINT	'	xp_cmdshell is in disabled mode. Proceeding to enable it..
+		It will be disabled again after execution of this procedure.';
+				END
+
+				--	enable cmdshell if it is otherwise
+				IF @_configurationValue_CmdShell = 0
+				BEGIN
+					-- To allow advanced options to be changed.  
+					EXEC sp_configure 'show advanced options', 1;  
+					-- To update the currently configured value for advanced options.  
+					RECONFIGURE; 
+					-- To enable the feature.  
+					EXEC sp_configure 'xp_cmdshell', 1;  
+					-- To update the currently configured value for this feature.  
+					RECONFIGURE;
+				END
 			END
 
 			--	Begin: Get Data & Log Mount Point Volumes
@@ -4675,6 +4702,23 @@ USE [master];
 				,NULL AS TSQLCode;
 
 	END CATCH
+
+	--	set the cmdshell setting to initial state
+	IF (@handleXPCmdShell = 1 AND @_configurationValue_CmdShell = 0)
+	BEGIN
+		--	enable cmdshell if it is otherwise
+		IF @_configurationValue_CmdShell = 0
+		BEGIN
+			-- To allow advanced options to be changed.  
+			EXEC sp_configure 'show advanced options', 1;  
+			-- To update the currently configured value for advanced options.  
+			RECONFIGURE; 
+			-- To enable the feature.  
+			EXEC sp_configure 'xp_cmdshell', 0;  
+			-- To update the currently configured value for this feature.  
+			RECONFIGURE;
+		END
+	END
 
 	-- Return data from @OutputMessages table which contains Error Messages, Action Taken, and its result (pass/fail)
 		-- Show this output only when @forceExecute = 1 or @_errorOccurred = 1
