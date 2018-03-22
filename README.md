@@ -53,7 +53,7 @@ Below is a sample output:-
 
 ![](images/@volumeInfo_TableResult.JPG)
 
-### Displays Total size, Used Space, Free Space and percentage for all Volumes/disk drives(@getVolumeSpaceConsumers)
+### Displays All Files & Folders consuming space on volume/disk (@getVolumeSpaceConsumers)
 
 This parameter results all the files and folder including all nested child items for path provided in @oldVolume parameter. This includes IsFolder, Name, Size, TotalChildItems, Owner, CreationTime, LastAccessTime and LastWriteTime.
 
@@ -72,7 +72,7 @@ EXEC [dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newVolume = 'F:\' ,@ol
 
 ![](images/@addDataFiles_output.JPG)
 
-If we execute above query with one extra parameter @forceExecute = 1, then rather than generating TSQL code, the generated TSQL script are executed in background and presented with final output message showing each script executed, database and filegroup names, and success/failure message.  Below is sample screenshot:-
+If we execute above query with one extra parameter <b>@forceExecute = 1</b>, then rather than generating TSQL code, the generated TSQL script are executed in background and presented with final output message showing each script executed, database and filegroup names, and success/failure message.  Below is sample screenshot:-
 
 ![](images/@addDataFiles_with_@forceExecute_output.JPG)
 
