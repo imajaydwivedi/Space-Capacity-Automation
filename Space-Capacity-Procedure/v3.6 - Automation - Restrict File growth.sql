@@ -4251,7 +4251,12 @@ ALTER DATABASE ['+DbName+'] MODIFY FILE ( NAME = N'''+[FileName]+''', SIZE = '+C
 				s.Volume, s.VolumeName, s.[capacity(MB)] as VolumeSize_MB
 		FROM	sys.master_files as mf
 		CROSS APPLY
-				(SELECT * FROM @mountPointVolumes AS v WHERE mf.physical_name LIKE (v.Volume+'%')) AS s
+		(	SELECT	v2.*
+			FROM  (	SELECT MAX(LEN(v.Volume)) AS Max_Volume_Length FROM @mountPointVolumes as v WHERE mf.physical_name LIKE (v.Volume+'%') ) as v1
+			INNER JOIN
+				  (	SELECT v.* FROM @mountPointVolumes as v WHERE mf.physical_name LIKE (v.Volume+'%') ) as v2
+				ON	LEN(v2.Volume) = v1.Max_Volume_Length
+		) as s
 		WHERE	mf.database_id = DB_ID('tempdb')
 			AND	mf.type_desc = 'ROWS'
 		ORDER BY mf.[file_id] ASC;

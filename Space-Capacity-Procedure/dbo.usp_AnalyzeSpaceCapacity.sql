@@ -1,3 +1,5 @@
+USE tempdb
+GO
 IF OBJECT_ID('dbo.usp_AnalyzeSpaceCapacity') IS NULL
   EXEC ('CREATE PROCEDURE dbo.usp_AnalyzeSpaceCapacity AS RETURN 0;')
 GO
@@ -329,15 +331,6 @@ BEGIN
 		IF @verbose=1 
 			PRINT	'
 /*	******************** BEGIN: Validations *****************************/';
-		
-		IF @verbose=1 
-			PRINT	'	Evaluation value of @_LogOrData variable';
-		IF (@addDataFiles=1 OR @restrictDataFileGrowth=1 OR @getInfo=1)
-			SET @_LogOrData = 'Data';
-		ELSE IF @oldVolume IS NOT NULL AND EXISTS (SELECT * FROM sys.master_files as mf WHERE mf.physical_name LIKE (@oldVolume+'%') AND type_desc = 'ROWS')
-			SET @_LogOrData = 'Data';
-		ELSE
-			SET @_LogOrData = 'Log';
 
 		IF	(@help=1 OR @volumeInfo=1 OR @addDataFiles=1 OR @addLogFiles=1 OR @restrictDataFileGrowth=1 OR @restrictLogFileGrowth=1 OR @generateCapacityException=1 OR @unrestrictFileGrowth=1 OR @removeCapacityException=1 OR @UpdateMountPointSecurity=1 OR @restrictMountPointGrowth=1 OR @expandTempDBSize=1 OR @optimizeLogFiles=1 OR @getVolumeSpaceConsumers=1)
 		BEGIN	
@@ -349,6 +342,17 @@ BEGIN
 			IF (@getLogInfo=0)
 				SET	@getInfo = 1;
 		END
+
+		IF @verbose=1 
+			PRINT	'	Evaluation value of @_LogOrData variable';
+		IF (@addDataFiles=1 OR @restrictDataFileGrowth=1 OR @getInfo=1)
+			SET @_LogOrData = 'Data';
+		ELSE IF (@restrictLogFileGrowth=1 OR @addLogFiles=1 OR @getLogInfo=1)
+			SET @_LogOrData = 'Log';
+		ELSE IF @oldVolume IS NOT NULL AND EXISTS (SELECT * FROM sys.master_files as mf WHERE mf.physical_name LIKE (@oldVolume+'%') AND type_desc = 'ROWS')
+			SET @_LogOrData = 'Data';
+		ELSE
+			SET @_LogOrData = 'Log';
 
 		--	Set Final Size thresholds for TempDb
 		IF (@expandTempDBSize = 1)
@@ -984,7 +988,7 @@ BEGIN
 								,[isExisting_UnrestrictedGrowth_on_OtherVolume] = CASE WHEN NOT EXISTS (
 																					SELECT	mf2.*, NULL as [fileGroup]
 																					FROM	sys.master_files mf2
-																					OUTER APPLY
+																					CROSS APPLY
 																					(	SELECT	v2.Volume
 																						FROM  (	SELECT MAX(LEN(v.Volume)) AS Max_Volume_Length FROM @mountPointVolumes as v WHERE mf2.physical_name LIKE (v.Volume+'%') ) as v1
 																						INNER JOIN
@@ -994,7 +998,8 @@ BEGIN
 																					WHERE	mf2.type_desc = mf1.type_desc
 																						AND	mf2.database_id = mf1.database_id
 																						AND mf2.growth <> 0
-																						AND v.Volume IN (select vi.Volume from @mountPointVolumes as vi WHERE vi.Volume <> @oldVolume AND [freespace(%)] >= 20.0)
+																						AND (	v.Volume IS NOT NULL
+																							AND	v.Volume IN (select vi.Volume from @mountPointVolumes as vi WHERE vi.Volume <> @oldVolume AND [freespace(%)] >= 20.0)	  )
 																				)
 																THEN 0
 																ELSE 1
@@ -4215,7 +4220,12 @@ ALTER DATABASE ['+DbName+'] MODIFY FILE ( NAME = N'''+[FileName]+''', SIZE = '+C
 				s.Volume, s.VolumeName, s.[capacity(MB)] as VolumeSize_MB
 		FROM	sys.master_files as mf
 		CROSS APPLY
-				(SELECT * FROM @mountPointVolumes AS v WHERE mf.physical_name LIKE (v.Volume+'%')) AS s
+		(	SELECT	v2.*
+			FROM  (	SELECT MAX(LEN(v.Volume)) AS Max_Volume_Length FROM @mountPointVolumes as v WHERE mf.physical_name LIKE (v.Volume+'%') ) as v1
+			INNER JOIN
+				  (	SELECT v.* FROM @mountPointVolumes as v WHERE mf.physical_name LIKE (v.Volume+'%') ) as v2
+				ON	LEN(v2.Volume) = v1.Max_Volume_Length
+		) as s
 		WHERE	mf.database_id = DB_ID('tempdb')
 			AND	mf.type_desc = 'ROWS'
 		ORDER BY mf.[file_id] ASC;
