@@ -113,3 +113,16 @@ EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictLogFileGrowth = 1 ,@oldVolume = '
 Output:-
 
 ![](images/@restrictLogFileGrowth_output.JPG)
+
+### Resize tempdb files (@expandTempDBSize)
+
+This generates TSQL code for expanding tempdb data files up to @tempDBMountPointPercent (default 89%) of total tempdb volume capacity. When @output4IdealScenario set to 1, will generate TSQL code to add/remove data files based on the number Logical cores on server up to 8, and delete extra data files created on non-tempdb volumes.
+
+EXEC [dbo].[usp_AnalyzeSpaceCapacity] @expandTempDBSize = 1, @tempDbMaxSizeThresholdInGB = 1;
+
+![](images/@expandTempDBSize_@tempDbMaxSizeThresholdInGB_output.JPG)
+
+EXEC [dbo].[usp_AnalyzeSpaceCapacity] @expandTempDBSize = 1, @tempDBMountPointPercent = 89;
+
+![](images/@expandTempDBSize_@tempDBMountPointPercent_output.JPG)
+
