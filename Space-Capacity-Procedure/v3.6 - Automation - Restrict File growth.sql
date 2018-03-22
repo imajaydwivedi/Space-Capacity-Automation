@@ -362,15 +362,6 @@ Get-ChildItem -Path $path -Recurse -File |
 		IF @verbose=1 
 			PRINT	'
 /*	******************** BEGIN: Validations *****************************/';
-		
-		IF @verbose=1 
-			PRINT	'	Evaluation value of @_LogOrData variable';
-		IF (@addDataFiles=1 OR @restrictDataFileGrowth=1 OR @getInfo=1)
-			SET @_LogOrData = 'Data';
-		ELSE IF @oldVolume IS NOT NULL AND EXISTS (SELECT * FROM sys.master_files as mf WHERE mf.physical_name LIKE (@oldVolume+'%') AND type_desc = 'ROWS')
-			SET @_LogOrData = 'Data';
-		ELSE
-			SET @_LogOrData = 'Log';
 
 		IF	(@help=1 OR @volumeInfo=1 OR @addDataFiles=1 OR @addLogFiles=1 OR @restrictDataFileGrowth=1 OR @restrictLogFileGrowth=1 OR @generateCapacityException=1 OR @unrestrictFileGrowth=1 OR @removeCapacityException=1 OR @UpdateMountPointSecurity=1 OR @restrictMountPointGrowth=1 OR @expandTempDBSize=1 OR @optimizeLogFiles=1 OR @getVolumeSpaceConsumers=1)
 		BEGIN	
@@ -382,6 +373,17 @@ Get-ChildItem -Path $path -Recurse -File |
 			IF (@getLogInfo=0)
 				SET	@getInfo = 1;
 		END
+
+		IF @verbose=1 
+			PRINT	'	Evaluation value of @_LogOrData variable';
+		IF (@addDataFiles=1 OR @restrictDataFileGrowth=1 OR @getInfo=1)
+			SET @_LogOrData = 'Data';
+		ELSE IF (@restrictLogFileGrowth=1 OR @addLogFiles=1 OR @getLogInfo=1)
+			SET @_LogOrData = 'Log';
+		ELSE IF @oldVolume IS NOT NULL AND EXISTS (SELECT * FROM sys.master_files as mf WHERE mf.physical_name LIKE (@oldVolume+'%') AND type_desc = 'ROWS')
+			SET @_LogOrData = 'Data';
+		ELSE
+			SET @_LogOrData = 'Log';
 
 		--	Set Final Size thresholds for TempDb
 		IF (@expandTempDBSize = 1)
@@ -1017,7 +1019,7 @@ Get-ChildItem -Path $path -Recurse -File |
 								,[isExisting_UnrestrictedGrowth_on_OtherVolume] = CASE WHEN NOT EXISTS (
 																					SELECT	mf2.*, NULL as [fileGroup]
 																					FROM	sys.master_files mf2
-																					OUTER APPLY
+																					CROSS APPLY
 																					(	SELECT	v2.Volume
 																						FROM  (	SELECT MAX(LEN(v.Volume)) AS Max_Volume_Length FROM @mountPointVolumes as v WHERE mf2.physical_name LIKE (v.Volume+'%') ) as v1
 																						INNER JOIN
@@ -1027,7 +1029,8 @@ Get-ChildItem -Path $path -Recurse -File |
 																					WHERE	mf2.type_desc = mf1.type_desc
 																						AND	mf2.database_id = mf1.database_id
 																						AND mf2.growth <> 0
-																						AND v.Volume IN (select vi.Volume from @mountPointVolumes as vi WHERE vi.Volume <> @oldVolume AND [freespace(%)] >= 20.0)
+																						AND (	v.Volume IS NOT NULL
+																							AND	v.Volume IN (select vi.Volume from @mountPointVolumes as vi WHERE vi.Volume <> @oldVolume AND [freespace(%)] >= 20.0)	  )
 																				)
 																THEN 0
 																ELSE 1
