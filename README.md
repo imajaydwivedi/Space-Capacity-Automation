@@ -101,3 +101,15 @@ EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictDataFileGrowth = 1 ,@oldVolume = 
 <b>Output:-</b>
 
 ![](images/@restrictDataFileGrowth_output.JPG)
+
+### Restrict Log Files (@restrictLogFileGrowth)
+
+This generates TSQL Code to restrict growth of log files on @oldVolume when log files with un-restricted growth are present on other volumes.
+
+EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictLogFileGrowth= 1 ,@oldVolume = 'E:\Logs\';
+
+EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictLogFileGrowth = 1 ,@oldVolume = 'E:\Logs\' ,@forceExecute = 1;
+
+Output:-
+
+![](images/@restrictLogFileGrowth_output.JPG)
