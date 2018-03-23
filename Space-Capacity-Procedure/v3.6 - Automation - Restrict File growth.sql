@@ -28,22 +28,10 @@ AS
 BEGIN
 	/*
 		Created By:		Ajay Dwivedi
-		Updated on:		18-Mar-2018
-		Current Ver:	3.6 - a) (Bug) same data/log file appearing in base drive and mounted volume at same time
-								for example:- Model database appearing in E:\MSSQL and E:\ drives both
-							b) @optimizeLogFiles -- Removes high VLF counts, and set good autogrowth settings
+		Updated on:		22-Mar-2018
+		Current Ver:	3.6 - @optimizeLogFiles -- Removes high VLF counts, and set good autogrowth settings
 								@releaseSpaceByShrinkingFiles -- Release free space from Data/Log files
-$path = 'E:';
-Get-ChildItem -Path $path -Recurse -File | 
-    Select-Object   Name,
-                    @{l='ParentPath';e={$_.DirectoryName}},
-                    @{l='SizeBytes';e={$_.Length}},
-                    @{l='Owner';e={((Get-ACL $_.FullName).Owner)}},
-                    CreationTime,
-                    LastAccessTime,
-                    LastWriteTime,
-                    @{l='IsFolder';e={if($_.PSIsContainer) {1} else {0}}} |
-        foreach{ $_.Name + '|' + $_.ParentPath + '|' + $_.SizeBytes + '|' + $_.Owner + '|' + $_.CreationTime + '|' + $_.LastAccessTime + '|' + $_.LastWriteTime + '|' + $_.IsFolder }
+								@getMail -- Add feature to send information on mailer
 
 		Purpose:		This procedure can be used to generate automatic TSQL code for working with ESCs like 'DBSEP2537- Data- Create and Restrict Database File Names' type.
 	*/
@@ -132,6 +120,17 @@ Get-ChildItem -Path $path -Recurse -File |
 			,@_procSTMT_Being_Executed VARCHAR(2000)
 			,@_dbaMaintDatabase varchar(255);
 
+	DECLARE @_current_ID BIGINT, 
+			@_current_line varchar(2000), 
+			@_current_PipeCounts INT,
+			@_previous_ID BIGINT, 
+			@_previous_line varchar(2000), 
+			@_previoust_PipeCounts INT,
+			@_next_ID BIGINT, 
+			@_next_line varchar(2000), 
+			@_next_PipeCounts INT;
+	DECLARE @_counter INT
+
 	DECLARE	@_logicalCores TINYINT
 			,@_fileCounts TINYINT
 			,@_maxFileNO TINYINT
@@ -212,7 +211,7 @@ Get-ChildItem -Path $path -Recurse -File |
 	IF @verbose=1 
 		PRINT	'Declaring Table Variables';
 
-	DECLARE @output TABLE (line varchar(2000));
+	DECLARE @output TABLE (ID BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY, line varchar(2000), PipeCounts AS LEN(line) - LEN(REPLACE(line,'|','')));
 	DECLARE @T_Files_Final_Add TABLE (ID INT IDENTITY(1,1), TSQL_AddFile VARCHAR(2000),DBName varchar (255), [fileGroup] varchar (255), name varchar (255), _name varchar (255));
 	DECLARE @T_LogFiles_Final_Add TABLE (ID INT IDENTITY(1,1), TSQL_AddFile VARCHAR(2000),DBName varchar (255), name varchar (255), _name varchar (255));
 	DECLARE @T_Files_Final_Restrict TABLE (ID INT IDENTITY(1,1), TSQL_RestrictFileGrowth VARCHAR(2000),DBName varchar (255), name varchar (255), _name varchar (255));
@@ -570,7 +569,6 @@ Get-ChildItem -Path $path -Recurse -File |
 
 			IF @_oldVolumesSpecified IS NOT NULL -- proceed if more than one volume specified 
 			BEGIN
-				DECLARE @_counter INT
 				SET @_counter = (SELECT MAX(ID) FROM @oldVolumeNames);
 
 				WHILE (@_counter > 1)
@@ -1769,7 +1767,7 @@ Get-ChildItem -Path $path -Recurse -File |
 /*	******************** Begin:	@getVolumeSpaceConsumers = 1 *****************************/';
 
 			--	Begin: Get All the files from @oldVolume
-			SET @_powershellCMD =  'powershell.exe -c "Get-ChildItem -Path '''+@oldVolume+''' -Recurse -File | Select-Object   Name, @{l=''ParentPath'';e={$_.DirectoryName}}, @{l=''SizeBytes'';e={$_.Length}}, @{l=''Owner'';e={((Get-ACL $_.FullName).Owner)}}, CreationTime, LastAccessTime, LastWriteTime, @{l=''IsFolder'';e={if($_.PSIsContainer) {1} else {0}}} | foreach{ $_.Name + ''|'' + $_.ParentPath + ''|'' + $_.SizeBytes + ''|'' + $_.Owner + ''|'' + $_.CreationTime + ''|'' + $_.LastAccessTime + ''|'' + $_.LastWriteTime + ''|'' + $_.IsFolder }"';
+			SET @_powershellCMD =  'powershell.exe -c "Get-ChildItem -Path '''+@oldVolume+''' -Recurse -File -ErrorAction SilentlyContinue | Select-Object   Name, @{l=''ParentPath'';e={$_.DirectoryName}}, @{l=''SizeBytes'';e={$_.Length}}, @{l=''Owner'';e={((Get-ACL $_.FullName).Owner)}}, CreationTime, LastAccessTime, LastWriteTime, @{l=''IsFolder'';e={if($_.PSIsContainer) {1} else {0}}} | foreach{ $_.Name + ''|'' + $_.ParentPath + ''|'' + $_.SizeBytes + ''|'' + $_.Owner + ''|'' + $_.CreationTime + ''|'' + $_.LastAccessTime + ''|'' + $_.LastWriteTime + ''|'' + $_.IsFolder }"';
 
 			-- Clear previous output
 			DELETE @output;
@@ -1786,10 +1784,104 @@ Get-ChildItem -Path $path -Recurse -File |
 
 			IF @verbose = 1
 			BEGIN
-				PRINT	'	SELECT * FROM @output';
-				SELECT 'SELECT * FROM @output' AS RunningQuery,* FROM @output;
+				SELECT	'SELECT * FROM @output' AS RunningQuery, *
+				FROM	@output as o
+				ORDER BY ID;
 			END
 
+			--	If line items are truncated to new line from PowerShell output
+			IF EXISTS (SELECT * FROM @output as o WHERE	line IS NOT NULL AND PipeCounts <> 7)
+			BEGIN
+				IF @verbose = 1
+					PRINT	CHAR(13) + CHAR(10)+ '	Some lines found that were split due to size got larger than 255 characters.';
+
+				DECLARE cursor_PowerShellMemoryConsumers CURSOR LOCAL SCROLL FOR
+						SELECT ID, line, PipeCounts FROM @output WHERE line IS NOT NULL ORDER BY ID;
+
+				OPEN cursor_PowerShellMemoryConsumers;
+
+				FETCH NEXT FROM cursor_PowerShellMemoryConsumers INTO @_current_ID, @_current_line, @_current_PipeCounts;
+				WHILE @@FETCH_STATUS = 0
+				BEGIN  
+					FETCH RELATIVE -1 FROM cursor_PowerShellMemoryConsumers INTO @_previous_ID, @_previous_line, @_previoust_PipeCounts;
+					FETCH RELATIVE 2 FROM cursor_PowerShellMemoryConsumers INTO @_next_ID, @_next_line, @_next_PipeCounts;
+
+					/*case 01:   if @_current_PipeCounts = 7 AND @_next_PipeCounts = 7
+								 then [Valid]
+								 if @_current_PipeCounts = 7 AND @_next_PipeCounts <> 7
+								 {
+									if @_current_PipeCounts + @_next_PipeCounts = 7
+									then current row and next row are part of same line
+									else next row is separater new line
+								 }
+
+					*/
+					
+					-- If next row is part of current row, then add next row in current row, and delete next row
+					IF (@_current_PipeCounts + @_next_PipeCounts = 7)
+					BEGIN
+						/*
+						IF @verbose = 1
+						BEGIN
+								PRINT	'--	--------------------------------------------
+	Current ID - '+CAST(ISNULL(@_current_ID,0) as varchar(10)) +'		
+	Line = '+@_current_line + '
+	Next RowID = '+CAST(ISNULL(@_next_ID,0) as varchar(10))+ '
+	Next Line = '+@_next_line;
+						END
+						*/
+						UPDATE @output
+						SET line = @_current_line + @_next_line
+						WHERE ID = @_current_ID;
+						
+						DELETE @output
+						WHERE CURRENT OF cursor_PowerShellMemoryConsumers;
+						/*
+						IF @verbose = 1
+							PRINT	'	Combined lines of ID '+CAST(ISNULL(@_current_ID,0) as varchar(10))+' and '+CAST(ISNULL(@_next_ID,0) as varchar(10)) ;
+						*/
+						FETCH NEXT FROM cursor_PowerShellMemoryConsumers INTO @_current_ID, @_current_line, @_current_PipeCounts;
+					END
+					ELSE
+					BEGIN
+						SELECT  @_current_ID = @_next_ID, @_current_line = @_next_line, @_current_PipeCounts = @_next_PipeCounts;
+					END
+				END
+
+				CLOSE cursor_PowerShellMemoryConsumers;  
+				DEALLOCATE cursor_PowerShellMemoryConsumers;  
+
+				IF @verbose = 1
+				BEGIN
+					SELECT	'Data after Deletion from @output table' AS RunningQuery, *
+					FROM	@output
+					ORDER BY ID;
+				END
+			END
+
+			IF @forceExecute = 0
+			BEGIN
+				IF EXISTS (SELECT * FROM @output AS o WHERE line IS NOT NULL AND PipeCounts <> 7 )
+				BEGIN
+					PRINT	'	/*	Deleting few rows which are not as per our format.
+	In order to find those rows, kindly add @verbose = 1 parameter and check table result for ''Files Data where PipeCounts <> 7'' */';
+					
+					DELETE @output
+					WHERE line IS NULL
+					OR	PipeCounts <> 7;
+
+					IF @verbose = 1
+					BEGIN
+						SELECT	Q.RunningQuery, o.*
+						FROM  (	SELECT 'Files Data where PipeCounts <> 7' AS RunningQuery ) Q
+						LEFT OUTER JOIN
+							  (SELECT * FROM @output AS o WHERE line IS NOT NULL AND PipeCounts <> 7 ) AS o
+						ON		1 = 1;;
+					END
+				END
+			END
+			
+			
 			IF @verbose=1 
 				PRINT	'	Extract Details for Files from PowerShell command output';
 			;WITH t_RawData AS
@@ -1845,7 +1937,9 @@ Get-ChildItem -Path $path -Recurse -File |
 			INSERT #VolumeFiles
 				( Name, ParentPath, SizeBytes, Owner, CreationTime, LastAccessTime, LastWriteTime, IsFile )
 			SELECT	Name, --[ParentPathID] = DENSE_RANK()OVER(ORDER BY ParentPath)
-					ParentPath, SizeBytes, Owner, CreationTime, LastAccessTime, LastWriteTime, [IsFile] = 1
+					ParentPath, SizeBytes, Owner, LTRIM(RTRIM(CreationTime)) AS CreationTime, 
+					LTRIM(RTRIM(LastAccessTime)) AS LastAccessTime, LTRIM(RTRIM(LastWriteTime)) AS LastWriteTime
+					,[IsFile] = 1
 			FROM	T_Files v;
 
 			IF @verbose=1
@@ -1856,7 +1950,7 @@ Get-ChildItem -Path $path -Recurse -File |
 			END
 
 			--	Begin: Get All folders from @oldVolume
-			SET @_powershellCMD =  'powershell.exe -c "Get-ChildItem -Path '''+@oldVolume+''' -Recurse -Directory | Select-Object   FullName, @{l=''Owner'';e={((Get-ACL $_.FullName).Owner)}}, CreationTime, LastAccessTime, LastWriteTime | foreach{ $_.FullName + ''|'' + $_.Owner + ''|'' + $_.CreationTime + ''|'' + $_.LastAccessTime + ''|'' + $_.LastWriteTime }"';
+			SET @_powershellCMD =  'powershell.exe -c "Get-ChildItem -Path '''+@oldVolume+''' -Recurse -Directory -ErrorAction SilentlyContinue | Select-Object   FullName, @{l=''Owner'';e={((Get-ACL $_.FullName).Owner)}}, CreationTime, LastAccessTime, LastWriteTime | foreach{ $_.FullName + ''|'' + $_.Owner + ''|'' + $_.CreationTime + ''|'' + $_.LastAccessTime + ''|'' + $_.LastWriteTime }"';
 
 			-- Clear previous output
 			DELETE @output;
@@ -1874,11 +1968,104 @@ Get-ChildItem -Path $path -Recurse -File |
 			IF @verbose = 1
 			BEGIN
 				PRINT	'	SELECT * FROM @output';
-				SELECT 'SELECT * FROM @output' AS RunningQuery,* FROM @output;
+				SELECT 'Folders Data FROM @output table' AS RunningQuery,* FROM @output;
+			END
+
+			--	If line items are truncated to new line from PowerShell output
+			IF EXISTS (SELECT * FROM @output as o WHERE	line IS NOT NULL AND PipeCounts <> 4)
+			BEGIN
+				IF @verbose = 1
+					PRINT	CHAR(13) + CHAR(10)+ '	Some lines found that were split due to size got larger than 255 characters.';
+
+				DECLARE cursor_PowerShellMemoryConsumers CURSOR LOCAL SCROLL FOR
+						SELECT ID, line, PipeCounts FROM @output WHERE line IS NOT NULL ORDER BY ID;
+
+				OPEN cursor_PowerShellMemoryConsumers;
+
+				FETCH NEXT FROM cursor_PowerShellMemoryConsumers INTO @_current_ID, @_current_line, @_current_PipeCounts;
+				WHILE @@FETCH_STATUS = 0
+				BEGIN  
+					FETCH RELATIVE -1 FROM cursor_PowerShellMemoryConsumers INTO @_previous_ID, @_previous_line, @_previoust_PipeCounts;
+					FETCH RELATIVE 2 FROM cursor_PowerShellMemoryConsumers INTO @_next_ID, @_next_line, @_next_PipeCounts;
+
+					/*case 01:   if @_current_PipeCounts = 4 AND @_next_PipeCounts = 4
+								 then [Valid]
+								 if @_current_PipeCounts = 4 AND @_next_PipeCounts <> 4
+								 {
+									if @_current_PipeCounts + @_next_PipeCounts = 4
+									then current row and next row are part of same line
+									else next row is separater new line
+								 }
+
+					*/
+					
+					-- If next row is part of current row, then add next row in current row, and delete next row
+					IF (@_current_PipeCounts + @_next_PipeCounts = 4)
+					BEGIN
+						/*
+						IF @verbose = 1
+						BEGIN
+								PRINT	'--	--------------------------------------------
+	Current ID - '+CAST(ISNULL(@_current_ID,0) as varchar(10)) +'		
+	Line = '+@_current_line + '
+	Next RowID = '+CAST(ISNULL(@_next_ID,0) as varchar(10))+ '
+	Next Line = '+@_next_line;
+						END
+						*/
+
+						UPDATE @output
+						SET line = @_current_line + @_next_line
+						WHERE ID = @_current_ID;
+						
+						DELETE @output
+						WHERE CURRENT OF cursor_PowerShellMemoryConsumers;
+						/*
+						IF @verbose = 1
+							PRINT	'	Combined lines of ID '+CAST(ISNULL(@_current_ID,0) as varchar(10))+' and '+CAST(ISNULL(@_next_ID,0) as varchar(10)) ;
+						*/
+						FETCH NEXT FROM cursor_PowerShellMemoryConsumers INTO @_current_ID, @_current_line, @_current_PipeCounts;
+					END
+					ELSE
+					BEGIN
+						SELECT  @_current_ID = @_next_ID, @_current_line = @_next_line, @_current_PipeCounts = @_next_PipeCounts;
+					END
+				END
+
+				CLOSE cursor_PowerShellMemoryConsumers;  
+				DEALLOCATE cursor_PowerShellMemoryConsumers;  
+
+				IF @verbose = 1
+				BEGIN
+					SELECT	'Folders Data after Deletion from @output table' AS RunningQuery, *
+					FROM	@output
+					ORDER BY ID;
+				END
+			END
+
+			IF @forceExecute = 0
+			BEGIN
+				IF EXISTS (SELECT * FROM @output AS o WHERE line IS NOT NULL AND PipeCounts <> 7 )
+				BEGIN
+					PRINT	'	/*	Deleting few rows which are not as per our format.
+	In order to find those rows, kindly add @verbose = 1 parameter and check table result for ''Folders Data where PipeCounts <> 4'' */';
+					
+					DELETE @output
+					WHERE line IS NULL
+					OR	PipeCounts <> 4;
+
+					IF @verbose = 1
+					BEGIN
+						SELECT	Q.RunningQuery, o.*
+						FROM  (	SELECT 'Folders Data where PipeCounts <> 4' AS RunningQuery ) Q
+						LEFT OUTER JOIN
+							  (SELECT * FROM @output AS o WHERE line IS NOT NULL AND PipeCounts <> 4 ) AS o
+						ON		1 = 1;
+					END
+				END
 			END
 
 			IF @verbose=1 
-				PRINT	'	Extract Details for Files from PowerShell command output';
+				PRINT	'	Extract Details for Folders from PowerShell command output';
 			;WITH t_RawData AS
 			(
 				SELECT	ID = 1, 
@@ -1925,11 +2112,14 @@ Get-ChildItem -Path $path -Recurse -File |
 			INSERT #VolumeFolders
 				( PathID, Name, SizeBytes, TotalChildItems, Owner, CreationTime, LastAccessTime, LastWriteTime, IsFolder )
 			SELECT	[PathID] = d.PathID, 
-					[Name] = d.Name, 
+					[Name] = LTRIM(RTRIM(d.Name)), 
 					--[ParentPathID] = NULL, 
 					[SizeBytes] = CASE WHEN d.PathID = 1 THEN v.[SizeBytes] ELSE fd.SizeBytes END, 
 					[TotalChildItems] = CASE WHEN d.PathID = 1 THEN v.TotalChildItems ELSE fd.TotalChildItems END
-					,d.Owner ,d.CreationTime ,d.LastAccessTime ,d.LastWriteTime
+					,LTRIM(RTRIM(d.Owner)) AS Owner
+					,REPLACE(REPLACE(d.CreationTime, CHAR(13), ''), CHAR(10), '') AS CreationTime
+					,REPLACE(REPLACE(d.LastAccessTime, CHAR(13), ''), CHAR(10), '') AS LastAccessTime
+					,REPLACE(REPLACE(d.LastWriteTime, CHAR(13), ''), CHAR(10), '') AS LastWriteTime
 					,IsFolder = 1
 			FROM  (
 					SELECT	PathID = 1,
@@ -1966,6 +2156,8 @@ Get-ChildItem -Path $path -Recurse -File |
 				  ) AS v -- as volume
 				ON	v.PathID = d.PathID;
 
+			IF @verbose = 1
+				PRINT	'	Updating ParentPathID of #VolumeFolders.';
 			-- Updating ParentPathID into #VolumeFolders table
 			UPDATE	c
 			SET	c.ParentPathID = p.PathID
@@ -1975,6 +2167,8 @@ Get-ChildItem -Path $path -Recurse -File |
 				ON	p.Name = LEFT(c.[Name],LEN(c.[Name])-CHARINDEX('\',REVERSE(c.[Name])))
 			WHERE	c.PathID <> 1;
 
+			IF @verbose = 1
+				PRINT	'	Updating ParentPathID of #VolumeFiles.';
 			-- Updating ParentPathID into #VolumeFiles table
 			UPDATE	c
 			SET		c.ParentPathID = p.PathID
@@ -1983,6 +2177,8 @@ Get-ChildItem -Path $path -Recurse -File |
 					#VolumeFolders as p
 				ON	c.[ParentPath] = (CASE WHEN p.PathID = 1 THEN p.Name+'\' else p.Name END);
 			
+			IF @verbose = 1
+				PRINT	'	Updating (\) blackslash issue for Root drive on #VolumeFolders.';
 			UPDATE #VolumeFolders
 			SET Name = (CASE WHEN CHARINDEX('\',[Name]) = 0 THEN [Name]+'\' ELSE [Name] END)
 			WHERE	PathID = 1
@@ -1991,9 +2187,23 @@ Get-ChildItem -Path $path -Recurse -File |
 			IF @verbose=1
 			BEGIN
 				PRINT	'	Values populated for #VolumeFolders';
+
+				SELECT	Q.RunningQuery, o.*
+				FROM  (	SELECT 'SELECT * FROM #VolumeFiles;' AS RunningQuery ) as Q
+				LEFT JOIN
+						#VolumeFiles AS o
+					ON	1 = 1;
+
 				PRINT	'	SELECT * FROM #VolumeFolders;'
-				SELECT 'SELECT * FROM #VolumeFolders;' AS RunningQuery,* FROM #VolumeFolders;
+				SELECT	Q.RunningQuery, o.*
+				FROM  (	SELECT 'SELECT * FROM #VolumeFolders;' AS RunningQuery ) as Q
+				LEFT JOIN
+						#VolumeFolders AS o
+					ON	1 = 1;
 			END
+
+			IF @verbose = 1
+				PRINT	'	Showing result after Combining data of #VolumeFolders & #VolumeFiles.';
 
 			SELECT	IsFolder = CASE WHEN IsFolder = 0 THEN '' ELSE CAST(IsFolder AS VARCHAR(2)) END,--ISNULL(NULLIF(IsFolder,0),''), 
 					Name, --ParentPathID, 
@@ -2013,7 +2223,7 @@ Get-ChildItem -Path $path -Recurse -File |
 					from	#VolumeFiles
 				  ) AS T
 			ORDER BY PathID, IsFolder desc, Name;
-
+			
 			IF @verbose=1 
 				PRINT	'
 /*	******************** Begin:	@getVolumeSpaceConsumers = 1 *****************************/';
