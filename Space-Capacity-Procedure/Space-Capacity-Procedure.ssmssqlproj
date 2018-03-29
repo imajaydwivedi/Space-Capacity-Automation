@@ -3,18 +3,6 @@
   <Items>
     <LogicalFolder Name="Connections" Type="2" Sorted="true">
       <Items>
-        <ConnectionNode Name="BAN-1ADWIVEDI-L:CORPORATE\adwivedi">
-          <Created>2018-02-13T10:34:45.1192204+05:30</Created>
-          <Type>SQL</Type>
-          <Server>BAN-1ADWIVEDI-L</Server>
-          <UserName />
-          <Authentication>Windows Authentication</Authentication>
-          <InitialDB />
-          <LoginTimeout>30</LoginTimeout>
-          <ExecutionTimeout>0</ExecutionTimeout>
-          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
-          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
-        </ConnectionNode>
         <ConnectionNode Name="BAN-2ADWIVEDI-L:sa">
           <Created>2018-03-20T11:02:11.6035865+05:30</Created>
           <Type>SQL</Type>
@@ -61,10 +49,16 @@
           <AssociatedConnUserName>sa</AssociatedConnUserName>
           <FullPath>dbo.usp_AnalyzeSpaceCapacity.sql</FullPath>
         </FileNode>
+        <FileNode Name="Dummy.sql">
+          <AssociatedConnectionMoniker />
+          <AssociatedConnSrvName />
+          <AssociatedConnUserName />
+          <FullPath>Dummy.sql</FullPath>
+        </FileNode>
         <FileNode Name="v3.6 - Automation - Restrict File growth.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:Preeti-Win10:False:sa</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>Preeti-Win10</AssociatedConnSrvName>
-          <AssociatedConnUserName>sa</AssociatedConnUserName>
+          <AssociatedConnectionMoniker />
+          <AssociatedConnSrvName />
+          <AssociatedConnUserName />
           <FullPath>v3.6 - Automation - Restrict File growth.sql</FullPath>
         </FileNode>
       </Items>

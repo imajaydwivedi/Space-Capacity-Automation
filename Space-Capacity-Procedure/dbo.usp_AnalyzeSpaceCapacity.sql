@@ -3,7 +3,6 @@ GO
 IF OBJECT_ID('dbo.usp_AnalyzeSpaceCapacity') IS NULL
   EXEC ('CREATE PROCEDURE dbo.usp_AnalyzeSpaceCapacity AS RETURN 0;')
 GO
-
 ALTER PROCEDURE [dbo].[usp_AnalyzeSpaceCapacity]
 	@getInfo BIT = 0, @getLogInfo BIT = 0, @volumeInfo BIT = 0, @help BIT = 0, @addDataFiles BIT = 0, @addLogFiles BIT = 0, @restrictDataFileGrowth BIT = 0, @restrictLogFileGrowth BIT = 0, @generateCapacityException BIT = 0, @unrestrictFileGrowth BIT = 0, @removeCapacityException BIT = 0, @UpdateMountPointSecurity BIT = 0, @restrictMountPointGrowth BIT = 0, @expandTempDBSize BIT = 0, @optimizeLogFiles BIT = 0, @getVolumeSpaceConsumers BIT = 0,
 	@newVolume VARCHAR(200) = NULL, @oldVolume VARCHAR(200) = NULL, @mountPointGrowthRestrictionPercent TINYINT = 79, @tempDBMountPointPercent TINYINT = NULL, @tempDbMaxSizeThresholdInGB INT = NULL, @DBs2Consider VARCHAR(1000) = NULL, @mountPointFreeSpaceThreshold_GB INT = 60
@@ -12,12 +11,10 @@ AS
 BEGIN
 	/*
 		Created By:		Ajay Dwivedi
-		Updated on:		23-Mar-2018
-		Current Ver:	3.5 - @optimizeLogFiles -- Removes high VLF counts, and set good autogrowth settings
-								@releaseSpaceByShrinkingFiles -- Release free space from Data/Log files
-								@getMail -- Add feature to send information on mailer
-
-		Purpose:		This procedure can be used to generate automatic TSQL code for working with ESCs like 'DBSEP2537- Data- Create and Restrict Database File Names' type.
+		Updated on:		22-Mar-2018
+		Current Ver:	3.6 - Fixed Below Issues
+						Issue# 07) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/7
+		Purpose:		This procedure can be used to generate automatic TSQL code for working with ESCs like 'DBSEP1234 - Data- Create and Restrict Database File Names' type.
 	*/
 
 	SET NOCOUNT ON;
@@ -379,9 +376,9 @@ BEGIN
 			BEGIN
 				SET @_errorMSG = 'Kindly provide only one parameter. Either @tempDbMaxSizeThresholdInGB or @tempDBMountPointPercent.';
 				IF (select CAST(LEFT(CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)),charindex('.',CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)))-1) AS INT)) >= 12
-					EXEC sp_executesql N'THROW 50000,@_errorMSG,1',N'@_errorMSG VARCHAR(200)', @_errorMSG;
+					EXECUTE sp_executesql N'THROW 50000,@_errorMSG,1',N'@_errorMSG VARCHAR(200)', @_errorMSG;
 				ELSE
-					EXEC sp_executesql N'RAISERROR (@_errorMSG, 16, 1)', N'@_errorMSG VARCHAR(200)', @_errorMSG;
+					EXECUTE sp_executesql N'RAISERROR (@_errorMSG, 16, 1)', N'@_errorMSG VARCHAR(200)', @_errorMSG;
 			END
 			-- If both parameters are NULL, use @tempDbMaxSizeThresholdInGB with default 
 			IF (@tempDbMaxSizeThresholdInGB IS NULL AND @tempDBMountPointPercent IS NULL)
@@ -423,9 +420,9 @@ BEGIN
 		BEGIN
 			SET @_errorMSG = 'Procedure does not accept NULL for parameter values.';
 			IF (select CAST(LEFT(CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)),charindex('.',CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)))-1) AS INT)) >= 12
-				EXEC sp_executesql N'THROW 50000,@_errorMSG,1',N'@_errorMSG VARCHAR(200)', @_errorMSG;
+				EXECUTE sp_executesql N'THROW 50000,@_errorMSG,1',N'@_errorMSG VARCHAR(200)', @_errorMSG;
 			ELSE
-				EXEC sp_executesql N'RAISERROR (@_errorMSG, 16, 1)', N'@_errorMSG VARCHAR(200)', @_errorMSG;
+				EXECUTE sp_executesql N'RAISERROR (@_errorMSG, 16, 1)', N'@_errorMSG VARCHAR(200)', @_errorMSG;
 		END
 
 		--	Check if valid parameter is selected for procedure
@@ -2165,8 +2162,34 @@ BEGIN
 				PRINT	'	Updating (\) blackslash issue for Root drive on #VolumeFolders.';
 			UPDATE #VolumeFolders
 			SET Name = (CASE WHEN CHARINDEX('\',[Name]) = 0 THEN [Name]+'\' ELSE [Name] END)
-			WHERE	PathID = 1
+			WHERE	PathID = 1;
 
+			IF @verbose = 1
+				PRINT	'	Updating size of Folders'
+			--DECLARE @pathID INT = 32;
+			;WITH t_childfolders as
+			(	SELECT f.PathID, f.PathID as ReferencePathID -- get top most path details
+				FROM #VolumeFolders as f --where f.PathID = @pathID		-- select * from tempdb..VolumeFolders as f where f.ParentPathID = 32
+				--
+				UNION ALL
+				--
+				SELECT fd.PathID, b.ReferencePathID
+				FROM t_childfolders as b
+				INNER JOIN
+					#VolumeFolders as fd -- get all folders directly under base path. Say 1 base path x 10 direct child folders
+					ON fd.ParentPathID = b.PathID
+			)
+			UPDATE	o
+			SET	SizeBytes = i.SizeBytes
+			FROM	#VolumeFolders as o
+			INNER JOIN
+				  (	SELECT fd.ReferencePathID, SUM(SizeBytes) AS SizeBytes
+					from #VolumeFiles as fl
+					inner join t_childfolders as fd
+					on fd.PathID = fl.ParentPathID
+					GROUP BY fd.ReferencePathID
+				  ) as i
+			ON	o.PathID = i.ReferencePathID
 
 			IF @verbose=1
 			BEGIN
@@ -2192,9 +2215,10 @@ BEGIN
 			SELECT	IsFolder = CASE WHEN IsFolder = 0 THEN '' ELSE CAST(IsFolder AS VARCHAR(2)) END,--ISNULL(NULLIF(IsFolder,0),''), 
 					Name, --ParentPathID, 
 					Size, TotalChildItems, Owner, CreationTime, LastAccessTime, LastWriteTime
+					,SizeBytes ,[Path]
 			FROM  (
 					select	PathID, Name, ParentPathID, 
-							SizeBytes, Size, TotalChildItems, Owner, CreationTime, LastAccessTime, LastWriteTime, IsFolder 
+							SizeBytes, Size, TotalChildItems, Owner, CreationTime, LastAccessTime, LastWriteTime, IsFolder, Name as [Path]
 					from	#VolumeFolders
 					--
 					UNION ALL
@@ -2203,7 +2227,7 @@ BEGIN
 							--Name = '|' + REPLICATE(' ',ParentPathID) + '|  '+Name, 
 							Name = REPLICATE('|   ',LEN(ParentPath)-LEN(REPLACE(ParentPath,'\',''))+(CASE WHEN ParentPathID =1 THEN 0 ELSE 1 END))+Name,
 							ParentPathID, --ParentPath, 
-							SizeBytes, Size, TotalChildItems = NULL, Owner, CreationTime, LastAccessTime, LastWriteTime, IsFolder=0
+							SizeBytes, Size, TotalChildItems = NULL, Owner, CreationTime, LastAccessTime, LastWriteTime, IsFolder=0, ParentPath as [Path]
 					from	#VolumeFiles
 				  ) AS T
 			ORDER BY PathID, IsFolder desc, Name;
