@@ -41,7 +41,7 @@ This parameter is used to display distribution of Log Files across multiple log 
 
 Below is a sample output:-
 
-![](images/@getLogInfo_TableResult.JPG)
+![](images/@getLogInfo.gif)
 
 ### Displays Total size, Used Space, Free Space and percentage for all Volumes/disk drives(@volumeInfo)
 
