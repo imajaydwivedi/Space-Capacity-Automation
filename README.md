@@ -57,7 +57,7 @@ This parameter results all the files and folder including all nested child items
 
 Below is a sample output:-
 
-![](images/@getVolumeSpaceConsumers_TableResult.jpeg)
+![](images/@getVolumeSpaceConsumers.gif)
 
 
 ### Add Data Files on New Volume (@addDataFiles)
