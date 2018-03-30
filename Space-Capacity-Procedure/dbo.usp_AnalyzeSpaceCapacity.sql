@@ -2725,7 +2725,7 @@ BEGIN
 		This generates TSQL code to re-size log files upto current size with objective to reduce high VLF Counts
 
 		--------------------------------------- EXAMPLE 14 ----------------------------------------------
-		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @getVolumeSpaceConsumers = 1, @oldVolume = ''F:\'' [,@sortBySize = 1]
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @getVolumeSpaceConsumers = 1, @oldVolume = ''F:\''
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @getVolumeSpaceConsumers = 1, @oldVolume = ''F:\'' ,@sortBySize = 1
 
 		This gives all files and folders including hidden items with details like Owner, Size, Created Date, Updated By etc for @oldVolume.
