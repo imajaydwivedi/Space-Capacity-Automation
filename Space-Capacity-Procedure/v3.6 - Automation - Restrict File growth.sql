@@ -23,7 +23,7 @@ SELECT CASE WHEN @_errorOccurred = 1 THEN 'fail' ELSE 'pass' END AS [Pass/Fail];
 ALTER PROCEDURE [dbo].[usp_AnalyzeSpaceCapacity]
 	@getInfo BIT = 0, @getLogInfo BIT = 0, @volumeInfo BIT = 0, @help BIT = 0, @addDataFiles BIT = 0, @addLogFiles BIT = 0, @restrictDataFileGrowth BIT = 0, @restrictLogFileGrowth BIT = 0, @generateCapacityException BIT = 0, @unrestrictFileGrowth BIT = 0, @removeCapacityException BIT = 0, @UpdateMountPointSecurity BIT = 0, @restrictMountPointGrowth BIT = 0, @expandTempDBSize BIT = 0, @optimizeLogFiles BIT = 0, @getVolumeSpaceConsumers BIT = 0,
 	@newVolume VARCHAR(200) = NULL, @oldVolume VARCHAR(200) = NULL, @mountPointGrowthRestrictionPercent TINYINT = 79, @tempDBMountPointPercent TINYINT = NULL, @tempDbMaxSizeThresholdInGB INT = NULL, @DBs2Consider VARCHAR(1000) = NULL, @mountPointFreeSpaceThreshold_GB INT = 60
-	,@verbose BIT = 0 ,@testAllOptions BIT = 0 ,@forceExecute BIT = 0 ,@allowMultiVolumeUnrestrictedFiles BIT = 0 ,@output4IdealScenario BIT = 0, @handleXPCmdShell BIT = 0
+	,@verbose BIT = 0 ,@testAllOptions BIT = 0 ,@forceExecute BIT = 0 ,@allowMultiVolumeUnrestrictedFiles BIT = 0 ,@output4IdealScenario BIT = 0, @handleXPCmdShell BIT = 0, @sortBySize BIT = 0
 AS
 BEGIN
 	/*
@@ -2229,25 +2229,34 @@ BEGIN
 			IF @verbose = 1
 				PRINT	'	Showing result after Combining data of #VolumeFolders & #VolumeFiles.';
 
-			SELECT	IsFolder = CASE WHEN IsFolder = 0 THEN '' ELSE CAST(IsFolder AS VARCHAR(2)) END,--ISNULL(NULLIF(IsFolder,0),''), 
-					Name, --ParentPathID, 
-					Size, TotalChildItems, Owner, CreationTime, LastAccessTime, LastWriteTime
-					,SizeBytes ,[Path]
-			FROM  (
-					select	PathID, Name, ParentPathID, 
-							SizeBytes, Size, TotalChildItems, Owner, CreationTime, LastAccessTime, LastWriteTime, IsFolder, Name as [Path]
-					from	#VolumeFolders
-					--
-					UNION ALL
-					--
-					select	PathID = ParentPathID, 
-							--Name = '|' + REPLICATE(' ',ParentPathID) + '|  '+Name, 
-							Name = REPLICATE('|   ',LEN(ParentPath)-LEN(REPLACE(ParentPath,'\',''))+(CASE WHEN ParentPathID =1 THEN 0 ELSE 1 END))+Name,
-							ParentPathID, --ParentPath, 
-							SizeBytes, Size, TotalChildItems = NULL, Owner, CreationTime, LastAccessTime, LastWriteTime, IsFolder=0, ParentPath as [Path]
-					from	#VolumeFiles
-				  ) AS T
-			ORDER BY PathID, IsFolder desc, Name;
+			IF @sortBySize = 0
+			BEGIN
+				SELECT	IsFolder = CASE WHEN IsFolder = 0 THEN '' ELSE CAST(IsFolder AS VARCHAR(2)) END,--ISNULL(NULLIF(IsFolder,0),''), 
+						Name, --ParentPathID, 
+						Size, TotalChildItems, Owner, CreationTime, LastAccessTime, LastWriteTime
+						,SizeBytes ,[Path]
+				FROM  (
+						select	PathID, Name, ParentPathID, 
+								SizeBytes, Size, TotalChildItems, Owner, CreationTime, LastAccessTime, LastWriteTime, IsFolder, Name as [Path]
+						from	#VolumeFolders
+						--
+						UNION ALL
+						--
+						select	PathID = ParentPathID, 
+								--Name = '|' + REPLICATE(' ',ParentPathID) + '|  '+Name, 
+								Name = REPLICATE('|   ',LEN(ParentPath)-LEN(REPLACE(ParentPath,'\',''))+(CASE WHEN ParentPathID =1 THEN 0 ELSE 1 END))+Name,
+								ParentPathID, --ParentPath, 
+								SizeBytes, Size, TotalChildItems = NULL, Owner, CreationTime, LastAccessTime, LastWriteTime, IsFolder=0, ParentPath as [Path]
+						from	#VolumeFiles
+					  ) AS T
+				ORDER BY PathID, IsFolder desc, Name;
+			END
+			ELSE
+			BEGIN
+				SELECT ParentPath, Name, Size, Owner, CreationTime, LastAccessTime, LastWriteTime 
+				FROM #VolumeFiles
+				ORDER BY SizeBytes DESC;
+			END
 			
 			IF @verbose=1 
 				PRINT	'
