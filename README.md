@@ -25,7 +25,7 @@ Also, below are the parameters for procedure with default values:-<br>
 
 For best result, always take out help from procedure using @help parameter. Below are few examples in Messages tab:-
 
-![](images/@help_originalSize.gif)
+![](images/@help_Output_LargeFonts.gif)
 
 ### Analyze Data Files Distribution (@getInfo)
 
