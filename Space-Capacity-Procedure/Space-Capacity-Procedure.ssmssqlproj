@@ -62,8 +62,8 @@
           <FullPath>dbo.usp_AnalyzeSpaceCapacity.sql</FullPath>
         </FileNode>
         <FileNode Name="Dummy.sql">
-          <AssociatedConnectionMoniker />
-          <AssociatedConnSrvName />
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:tul1cipmbdb2:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>tul1cipmbdb2</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>Dummy.sql</FullPath>
         </FileNode>
@@ -77,6 +77,18 @@
     </LogicalFolder>
     <LogicalFolder Name="Miscellaneous" Type="3" Sorted="true">
       <Items>
+        <FileNode Name="@help_originalSize.gif">
+          <AssociatedConnectionMoniker />
+          <AssociatedConnSrvName />
+          <AssociatedConnUserName />
+          <FullPath>@help_originalSize.gif</FullPath>
+        </FileNode>
+        <FileNode Name="@help_size1108.gif">
+          <AssociatedConnectionMoniker />
+          <AssociatedConnSrvName />
+          <AssociatedConnUserName />
+          <FullPath>@help_size1108.gif</FullPath>
+        </FileNode>
         <FileNode Name="Algorith.JPG">
           <AssociatedConnectionMoniker />
           <AssociatedConnSrvName />

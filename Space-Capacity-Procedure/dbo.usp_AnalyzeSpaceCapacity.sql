@@ -3,7 +3,13 @@ GO
 IF OBJECT_ID('dbo.usp_AnalyzeSpaceCapacity') IS NULL
   EXEC ('CREATE PROCEDURE dbo.usp_AnalyzeSpaceCapacity AS RETURN 0;')
 GO
-
+--	EXEC tempdb..[usp_AnalyzeSpaceCapacity] @help = 1
+/*	
+DECLARE	@_errorOccurred BIT; 
+EXEC @_errorOccurred = [dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newVolume = 'E:\Data6\' ,@oldVolume = 'E:\Data5\' 
+														,@forceExecute = 1 ; 
+SELECT CASE WHEN @_errorOccurred = 1 THEN 'fail' ELSE 'pass' END AS [Pass/Fail];
+*/
 ALTER PROCEDURE [dbo].[usp_AnalyzeSpaceCapacity]
 	@getInfo BIT = 0, @getLogInfo BIT = 0, @volumeInfo BIT = 0, @help BIT = 0, @addDataFiles BIT = 0, @addLogFiles BIT = 0, @restrictDataFileGrowth BIT = 0, @restrictLogFileGrowth BIT = 0, @generateCapacityException BIT = 0, @unrestrictFileGrowth BIT = 0, @removeCapacityException BIT = 0, @UpdateMountPointSecurity BIT = 0, @restrictMountPointGrowth BIT = 0, @expandTempDBSize BIT = 0, @optimizeLogFiles BIT = 0, @getVolumeSpaceConsumers BIT = 0,
 	@newVolume VARCHAR(200) = NULL, @oldVolume VARCHAR(200) = NULL, @mountPointGrowthRestrictionPercent TINYINT = 79, @tempDBMountPointPercent TINYINT = NULL, @tempDbMaxSizeThresholdInGB INT = NULL, @DBs2Consider VARCHAR(1000) = NULL, @mountPointFreeSpaceThreshold_GB INT = 60
@@ -12,7 +18,7 @@ AS
 BEGIN
 	/*
 		Created By:		Ajay Dwivedi
-		Updated on:		30-Mar-2018
+		Updated on:		22-Mar-2018
 		Current Ver:	3.6 - Fixed Below Issues
 						Issue# 07) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/7
 						Issue# 08) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/8
@@ -2624,7 +2630,7 @@ BEGIN
 												|
 												@expandTempDBSize = { 1 | 0} [,@tempDBMountPointPercent = <value> ] [,@tempDbMaxSizeThresholdInGB = <value> ] [,@output4IdealScenario = 1] [,@forceExecute = 1]
 												|
-												@getVolumeSpaceConsumers = { 1 | 0}, @oldVolume = <drive_name>
+												@getVolumeSpaceConsumers = { 1 | 0}, @oldVolume = <drive_name> [,@sortBySize = 1]
 											  } [;]
 
 		<drive_name> :: { ''E:\Data\'' | ''E:\Data01'' | ''E:\Data2'' | ... }
@@ -2717,6 +2723,13 @@ BEGIN
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1
 
 		This generates TSQL code to re-size log files upto current size with objective to reduce high VLF Counts
+
+		--------------------------------------- EXAMPLE 14 ----------------------------------------------
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @getVolumeSpaceConsumers = 1, @oldVolume = ''F:\'' [,@sortBySize = 1]
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @getVolumeSpaceConsumers = 1, @oldVolume = ''F:\'' ,@sortBySize = 1
+
+		This gives all files and folders including hidden items with details like Owner, Size, Created Date, Updated By etc for @oldVolume.
+		When @sortBySize is set to 1, will show only files order by their size in descending order.
 	';
 
 		IF @verbose=1 

@@ -2640,7 +2640,7 @@ BEGIN
 												|
 												@expandTempDBSize = { 1 | 0} [,@tempDBMountPointPercent = <value> ] [,@tempDbMaxSizeThresholdInGB = <value> ] [,@output4IdealScenario = 1] [,@forceExecute = 1]
 												|
-												@getVolumeSpaceConsumers = { 1 | 0}, @oldVolume = <drive_name>
+												@getVolumeSpaceConsumers = { 1 | 0}, @oldVolume = <drive_name> [,@sortBySize = 1]
 											  } [;]
 
 		<drive_name> :: { ''E:\Data\'' | ''E:\Data01'' | ''E:\Data2'' | ... }
@@ -2733,6 +2733,13 @@ BEGIN
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1
 
 		This generates TSQL code to re-size log files upto current size with objective to reduce high VLF Counts
+
+		--------------------------------------- EXAMPLE 14 ----------------------------------------------
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @getVolumeSpaceConsumers = 1, @oldVolume = ''F:\'' [,@sortBySize = 1]
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @getVolumeSpaceConsumers = 1, @oldVolume = ''F:\'' ,@sortBySize = 1
+
+		This gives all files and folders including hidden items with details like Owner, Size, Created Date, Updated By etc for @oldVolume.
+		When @sortBySize is set to 1, will show only files order by their size in descending order.
 	';
 
 		IF @verbose=1 
