@@ -12,10 +12,11 @@ AS
 BEGIN
 	/*
 		Created By:		Ajay Dwivedi
-		Updated on:		22-Mar-2018
+		Updated on:		30-Mar-2018
 		Current Ver:	3.6 - Fixed Below Issues
 						Issue# 07) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/7
 						Issue# 08) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/8
+						Issue# 09) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/9
 		Purpose:		This procedure can be used to generate automatic TSQL code for working with ESCs like 'DBSEP1234- Data- Create and Restrict Database File Names' type.
 	*/
 
@@ -1750,7 +1751,7 @@ BEGIN
 /*	******************** Begin:	@getVolumeSpaceConsumers = 1 *****************************/';
 
 			--	Begin: Get All the files from @oldVolume
-			SET @_powershellCMD =  'powershell.exe -c "Get-ChildItem -Path '''+@oldVolume+''' -Recurse -File -ErrorAction SilentlyContinue | Select-Object   Name, @{l=''ParentPath'';e={$_.DirectoryName}}, @{l=''SizeBytes'';e={$_.Length}}, @{l=''Owner'';e={((Get-ACL $_.FullName).Owner)}}, CreationTime, LastAccessTime, LastWriteTime, @{l=''IsFolder'';e={if($_.PSIsContainer) {1} else {0}}} | foreach{ $_.Name + ''|'' + $_.ParentPath + ''|'' + $_.SizeBytes + ''|'' + $_.Owner + ''|'' + $_.CreationTime + ''|'' + $_.LastAccessTime + ''|'' + $_.LastWriteTime + ''|'' + $_.IsFolder }"';
+			SET @_powershellCMD =  'powershell.exe -c "Get-ChildItem -Path '''+@oldVolume+''' -Recurse -File -Force -ErrorAction SilentlyContinue | Select-Object   Name, @{l=''ParentPath'';e={$_.DirectoryName}}, @{l=''SizeBytes'';e={$_.Length}}, @{l=''Owner'';e={((Get-ACL $_.FullName).Owner)}}, CreationTime, LastAccessTime, LastWriteTime, @{l=''IsFolder'';e={if($_.PSIsContainer) {1} else {0}}} | foreach{ $_.Name + ''|'' + $_.ParentPath + ''|'' + $_.SizeBytes + ''|'' + $_.Owner + ''|'' + $_.CreationTime + ''|'' + $_.LastAccessTime + ''|'' + $_.LastWriteTime + ''|'' + $_.IsFolder }"';
 
 			-- Clear previous output
 			DELETE @output;
@@ -1933,7 +1934,7 @@ BEGIN
 			END
 
 			--	Begin: Get All folders from @oldVolume
-			SET @_powershellCMD =  'powershell.exe -c "Get-ChildItem -Path '''+@oldVolume+''' -Recurse -Directory -ErrorAction SilentlyContinue | Select-Object   FullName, @{l=''Owner'';e={((Get-ACL $_.FullName).Owner)}}, CreationTime, LastAccessTime, LastWriteTime | foreach{ $_.FullName + ''|'' + $_.Owner + ''|'' + $_.CreationTime + ''|'' + $_.LastAccessTime + ''|'' + $_.LastWriteTime }"';
+			SET @_powershellCMD =  'powershell.exe -c "Get-ChildItem -Path '''+@oldVolume+''' -Recurse -Directory -Force -ErrorAction SilentlyContinue | Select-Object   FullName, @{l=''Owner'';e={((Get-ACL $_.FullName).Owner)}}, CreationTime, LastAccessTime, LastWriteTime | foreach{ $_.FullName + ''|'' + $_.Owner + ''|'' + $_.CreationTime + ''|'' + $_.LastAccessTime + ''|'' + $_.LastWriteTime }"';
 
 			-- Clear previous output
 			DELETE @output;
