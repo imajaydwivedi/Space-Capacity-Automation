@@ -1,1 +1,1 @@
-EXEC tempdb..[usp_AnalyzeSpaceCapacity] @help = 1
+EXEC tempdb..[usp_AnalyzeSpaceCapacity] @getInfo = 1
