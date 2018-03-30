@@ -33,7 +33,7 @@ This parameter is used to display distribution of Data Files across multiple dat
 
 Below is a sample output:-
 
-![](images/@getInfo_TableResult.JPG)
+![](images/@getInfo.gif)
 
 ### Analyze Log Files Distribution (@getLogInfo)
 
