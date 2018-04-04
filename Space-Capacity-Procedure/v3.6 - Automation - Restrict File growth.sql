@@ -2497,7 +2497,11 @@ BEGIN
 
 		-- VALUES constructor method does not work in SQL 2005. So using UNION ALL
 		SELECT	[Parameter Name], [Data Type], [Default Value], [Parameter Description]
-		FROM	(SELECT	'@help' as [Parameter Name],'BIT' as [Data Type],'0' as [Default Value],'Displays this help message.' as [Parameter Description]
+		FROM	(SELECT	'!~~~ Version ~~~~!' as [Parameter Name],'Information' as [Data Type],'3.6' as [Default Value],'Last Updated - 04/Apr/2018' as [Parameter Description]
+					--
+				UNION ALL
+					--
+				SELECT	'@help' as [Parameter Name],'BIT' as [Data Type],'0' as [Default Value],'Displays this help message.' as [Parameter Description]
 					--
 				UNION ALL
 					--
