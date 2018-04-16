@@ -3,7 +3,7 @@ GO
 IF OBJECT_ID('dbo.usp_AnalyzeSpaceCapacity') IS NULL
   EXEC ('CREATE PROCEDURE dbo.usp_AnalyzeSpaceCapacity AS RETURN 0;')
 GO
---	EXEC tempdb..[usp_AnalyzeSpaceCapacity] @help = 1
+--	EXEC tempdb..[usp_AnalyzeSpaceCapacity] @help = 1 
 /*	
 DECLARE	@_errorOccurred BIT; 
 EXEC @_errorOccurred = [dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newVolume = 'E:\Data6\' ,@oldVolume = 'E:\Data5\' 
@@ -2775,6 +2775,11 @@ BEGIN
 
 		This gives all files and folders including hidden items with details like Owner, Size, Created Date, Updated By etc for @oldVolume.
 		When @sortBySize is set to 1, will show only files order by their size in descending order.
+
+		--------------------------------------- EXAMPLE 15 ----------------------------------------------
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @volumeInfo = 1;
+
+		Displays Total size, Used Space, Free Space and percentage for all Volumes/disk drives.
 	';
 
 		IF @verbose=1 
