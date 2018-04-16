@@ -5,7 +5,7 @@ IF OBJECT_ID('dbo.usp_AnalyzeSpaceCapacity') IS NULL
 GO
 
 --	EXEC tempdb..[usp_AnalyzeSpaceCapacity] @volumeInfo = 1
---	EXEC tempdb..[usp_AnalyzeSpaceCapacity] @getVolumeSpaceConsumers = 1, @oldVolume = 'E:\'
+--	EXEC tempdb..[usp_AnalyzeSpaceCapacity] @getVolumeSpaceConsumers = 1, @oldVolume = 'C:\Users\adwivedi\Downloads\SQLScripts-master'
 --	EXEC tempdb..[usp_AnalyzeSpaceCapacity] @getLogInfo = 1 ,@verbose = 1
 --	EXEC tempdb..[usp_AnalyzeSpaceCapacity] @help = 1
 --	EXEC [dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newVolume = 'E:\Data5\' ,@oldVolume = 'E:\Data4\' ,@forceExecute = 1
@@ -206,7 +206,7 @@ BEGIN
 	SET @_counts_of_Files_To_Be_Created = 0;
 	SET @_jobTimeThreshold_in_Hrs = NULL; -- Set threshold hours to 18 here
 	SELECT @_oldVolumesSpecified = CASE WHEN (@oldVolume IS NOT NULL) AND (CHARINDEX(',',@oldVolume)<>0) THEN @oldVolume ELSE NULL END;
-	SET @_dbaMaintDatabase = 'uhtdba';
+	SET @_dbaMaintDatabase = 'sqldba';
 
 	IF @verbose=1 
 		PRINT	'Declaring Table Variables';
@@ -319,9 +319,9 @@ BEGIN
 						ELSE	CAST(CAST([SizeBytes] AS DECIMAL(20,2)) AS VARCHAR(21)) + ' bytes'
 						END),
 		[Owner] [varchar](100) NULL,
-		[CreationTime] DATETIME2 NULL,
-		[LastAccessTime] DATETIME2 NULL,
-		[LastWriteTime] DATETIME2 NULL,
+		[CreationTime] DATETIME NULL,
+		[LastAccessTime] DATETIME NULL,
+		[LastWriteTime] DATETIME NULL,
 		[IsFile] BIT NULL DEFAULT 1
 	);
 	IF OBJECT_ID('tempdb..#VolumeFolders') IS NOT NULL -- Get all the files on @oldVolume
@@ -342,9 +342,9 @@ BEGIN
 						END),
 		[TotalChildItems] INT NULL,
 		[Owner] [varchar](100) NULL,
-		[CreationTime] DATETIME2 NULL,
-		[LastAccessTime] DATETIME2 NULL,
-		[LastWriteTime] DATETIME2 NULL,
+		[CreationTime] DATETIME NULL,
+		[LastAccessTime] DATETIME NULL,
+		[LastWriteTime] DATETIME NULL,
 		[IsFolder] BIT NULL DEFAULT 1
 	);
 	
@@ -416,19 +416,19 @@ BEGIN
 			PRINT '	Evaluating value for @_procSTMT_Being_Executed';
 		SET @_procSTMT_Being_Executed = 'EXEC [dbo].[usp_AnalyzeSpaceCapacity] ';
 		IF @getInfo = 1
-			SET @_procSTMT_Being_Executed += ' @getInfo = 1';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @getInfo = 1';
 		ELSE IF @getLogInfo = 1
-			SET @_procSTMT_Being_Executed += ' @getLogInfo = 1';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @getLogInfo = 1';
 		ELSE IF @help = 1
-			SET @_procSTMT_Being_Executed += ' @help = 1';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @help = 1';
 		ELSE IF @addDataFiles = 1
-			SET @_procSTMT_Being_Executed += ' @addDataFiles = 1 ' + ',@newVolume = '+QUOTENAME(@newVolume,'''')+' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @addDataFiles = 1 ' + ',@newVolume = '+QUOTENAME(@newVolume,'''')+' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
 		ELSE IF @addLogFiles = 1
-			SET @_procSTMT_Being_Executed += ' @addLogFiles = 1 ' + ',@newVolume = '+QUOTENAME(@newVolume,'''')+' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @addLogFiles = 1 ' + ',@newVolume = '+QUOTENAME(@newVolume,'''')+' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
 		ELSE IF @restrictDataFileGrowth = 1
-			SET @_procSTMT_Being_Executed += ' @restrictDataFileGrowth = 1 ' + ' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @restrictDataFileGrowth = 1 ' + ' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
 		ELSE IF @restrictLogFileGrowth = 1
-			SET @_procSTMT_Being_Executed += ' @restrictLogFileGrowth = 1 ' + ' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @restrictLogFileGrowth = 1 ' + ' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
 
 		IF @verbose = 1
 			PRINT '	Value of @_procSTMT_Being_Executed = '+CHAR(10)+CHAR(10)+@_procSTMT_Being_Executed+CHAR(10);
@@ -2255,9 +2255,10 @@ BEGIN
 			END
 			ELSE
 			BEGIN
-				SELECT ParentPath, Name, Size, Owner, CreationTime, LastAccessTime, LastWriteTime 
+				SELECT ParentPath = REPLACE(ParentPath,'C:\Users\adwivedi\Downloads\',''), Name, Size, Owner, CreationTime, LastAccessTime, LastWriteTime 
 				FROM #VolumeFiles
-				ORDER BY SizeBytes DESC;
+				ORDER BY ParentPath, Name
+				--ORDER BY SizeBytes DESC;
 			END
 			
 			IF @verbose=1 

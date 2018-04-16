@@ -19,7 +19,8 @@ BEGIN
 	/*
 		Created By:		Ajay Dwivedi
 		Updated on:		22-Mar-2018
-		Current Ver:	3.6 - Fixed Below Issues
+		Current Ver:	3.6.1 - Fixed Below Issues
+						Made procedure compatible with SQL 2005
 						Issue# 07) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/7
 						Issue# 08) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/8
 						Issue# 09) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/9
@@ -196,7 +197,7 @@ BEGIN
 	SET @_counts_of_Files_To_Be_Created = 0;
 	SET @_jobTimeThreshold_in_Hrs = NULL; -- Set threshold hours to 18 here
 	SELECT @_oldVolumesSpecified = CASE WHEN (@oldVolume IS NOT NULL) AND (CHARINDEX(',',@oldVolume)<>0) THEN @oldVolume ELSE NULL END;
-	SET @_dbaMaintDatabase = 'uhtdba';
+	SET @_dbaMaintDatabase = 'sqldba';
 
 	IF @verbose=1 
 		PRINT	'Declaring Table Variables';
@@ -309,9 +310,9 @@ BEGIN
 						ELSE	CAST(CAST([SizeBytes] AS DECIMAL(20,2)) AS VARCHAR(21)) + ' bytes'
 						END),
 		[Owner] [varchar](100) NULL,
-		[CreationTime] DATETIME2 NULL,
-		[LastAccessTime] DATETIME2 NULL,
-		[LastWriteTime] DATETIME2 NULL,
+		[CreationTime] DATETIME NULL,
+		[LastAccessTime] DATETIME NULL,
+		[LastWriteTime] DATETIME NULL,
 		[IsFile] BIT NULL DEFAULT 1
 	);
 	IF OBJECT_ID('tempdb..#VolumeFolders') IS NOT NULL -- Get all the files on @oldVolume
@@ -332,9 +333,9 @@ BEGIN
 						END),
 		[TotalChildItems] INT NULL,
 		[Owner] [varchar](100) NULL,
-		[CreationTime] DATETIME2 NULL,
-		[LastAccessTime] DATETIME2 NULL,
-		[LastWriteTime] DATETIME2 NULL,
+		[CreationTime] DATETIME NULL,
+		[LastAccessTime] DATETIME NULL,
+		[LastWriteTime] DATETIME NULL,
 		[IsFolder] BIT NULL DEFAULT 1
 	);
 	
@@ -406,19 +407,19 @@ BEGIN
 			PRINT '	Evaluating value for @_procSTMT_Being_Executed';
 		SET @_procSTMT_Being_Executed = 'EXEC [dbo].[usp_AnalyzeSpaceCapacity] ';
 		IF @getInfo = 1
-			SET @_procSTMT_Being_Executed += ' @getInfo = 1';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @getInfo = 1';
 		ELSE IF @getLogInfo = 1
-			SET @_procSTMT_Being_Executed += ' @getLogInfo = 1';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @getLogInfo = 1';
 		ELSE IF @help = 1
-			SET @_procSTMT_Being_Executed += ' @help = 1';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @help = 1';
 		ELSE IF @addDataFiles = 1
-			SET @_procSTMT_Being_Executed += ' @addDataFiles = 1 ' + ',@newVolume = '+QUOTENAME(@newVolume,'''')+' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @addDataFiles = 1 ' + ',@newVolume = '+QUOTENAME(@newVolume,'''')+' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
 		ELSE IF @addLogFiles = 1
-			SET @_procSTMT_Being_Executed += ' @addLogFiles = 1 ' + ',@newVolume = '+QUOTENAME(@newVolume,'''')+' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @addLogFiles = 1 ' + ',@newVolume = '+QUOTENAME(@newVolume,'''')+' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
 		ELSE IF @restrictDataFileGrowth = 1
-			SET @_procSTMT_Being_Executed += ' @restrictDataFileGrowth = 1 ' + ' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @restrictDataFileGrowth = 1 ' + ' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
 		ELSE IF @restrictLogFileGrowth = 1
-			SET @_procSTMT_Being_Executed += ' @restrictLogFileGrowth = 1 ' + ' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @restrictLogFileGrowth = 1 ' + ' ,@oldVolume = '+QUOTENAME(@oldVolume,'''') + (CASE WHEN @DBs2Consider IS NOT NULL THEN ' ,@DBs2Consider = '+QUOTENAME(@DBs2Consider,'''') ELSE '' END) + (CASE WHEN @forceExecute = 1 THEN ' ,@forceExecute = 1' ELSE '' END)+ ';';
 
 		IF @verbose = 1
 			PRINT '	Value of @_procSTMT_Being_Executed = '+CHAR(10)+CHAR(10)+@_procSTMT_Being_Executed+CHAR(10);
@@ -666,6 +667,46 @@ BEGIN
 			BEGIN
 				PRINT	'	SELECT * FROM @output';
 				SELECT 'SELECT * FROM @output' AS RunningQuery,* FROM @output;
+			END
+
+			--	Check if some volume exists in @mountPointVolumes
+			IF EXISTS (SELECT * FROM @output WHERE line LIKE '''powershell.exe'' is not recognized as an internal or external command%') 
+			BEGIN
+				SELECT	@_errorMSG = 'You are using '+i.SQLVersionBuild+' on '+i.WindowsVersionBuild+'. PowerShell is not found on this server.'
+				FROM  (
+						SELECT	SERVERPROPERTY('ServerName') AS [SQLServerName]
+								, SERVERPROPERTY('ProductVersion') AS [SQLProductVersion]
+								, SERVERPROPERTY('ProductMajorVersion') AS [ProductMajorVersion]
+								, SERVERPROPERTY('ProductMinorVersion') AS [ProductMinorVersion]
+								, SERVERPROPERTY('ProductBuild') AS [ProductBuild]
+								, CASE LEFT(CONVERT(VARCHAR, SERVERPROPERTY('ProductVersion')),4) 
+								   WHEN '8.00' THEN 'SQL Server 2000'
+								   WHEN '9.00' THEN 'SQL Server 2005'
+								   WHEN '10.0' THEN 'SQL Server 2008'
+								   WHEN '10.5' THEN 'SQL Server 2008 R2'
+								   WHEN '11.0' THEN 'SQL Server 2012'
+								   WHEN '12.0' THEN 'SQL Server 2014'
+								   ELSE 'SQL Server 2016+'
+								  END AS [SQLVersionBuild]
+								, SERVERPROPERTY('ProductLevel') AS [SQLServicePack]
+								, SERVERPROPERTY('Edition') AS [SQLEdition]
+								, RIGHT(SUBSTRING(@@VERSION, CHARINDEX('Windows NT', @@VERSION), 14), 3) as [WindowsVersionNumber]
+								, CASE RIGHT(SUBSTRING(@@VERSION, CHARINDEX('Windows NT', @@VERSION), 14), 3)
+								   WHEN '5.0' THEN 'Windows 2000'
+								   WHEN '5.1' THEN 'Windows XP'
+								   WHEN '5.2' THEN 'Windows Server 2003/2003 R2'
+								   WHEN '6.0' THEN 'Windows Server 2008/Windows Vista'
+								   WHEN '6.1' THEN 'Windows Server 2008 R2/Windows 7'
+								   WHEN '6.2' THEN 'Windows Server 2012/Windows 8'
+								   ELSE 'Windows 2012 R2+'
+								  END AS [WindowsVersionBuild]
+					  ) AS i;
+				--SET @_errorMSG = 'Volume configuration is not per standard. Kindly perform the activity manually.';
+			
+				IF (select CAST(LEFT(CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)),charindex('.',CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)))-1) AS INT)) >= 12
+					EXEC sp_executesql N'THROW 50000,@_errorMSG,1',N'@_errorMSG VARCHAR(200)', @_errorMSG;
+				ELSE
+					EXEC sp_executesql N'RAISERROR (@_errorMSG, 16, 1)', N'@_errorMSG VARCHAR(200)', @_errorMSG;
 			END
 
 			IF @verbose=1 
@@ -2487,7 +2528,7 @@ BEGIN
 
 		-- VALUES constructor method does not work in SQL 2005. So using UNION ALL
 		SELECT	[Parameter Name], [Data Type], [Default Value], [Parameter Description]
-		FROM	(SELECT	'!~~~ Version ~~~~!' as [Parameter Name],'Information' as [Data Type],'3.6' as [Default Value],'Last Updated - 04/Apr/2018' as [Parameter Description]
+		FROM	(SELECT	'!~~~ Version ~~~~!' as [Parameter Name],'Information' as [Data Type],'3.6.1' as [Default Value],'Last Updated - 16/Apr/2018' as [Parameter Description]
 					--
 				UNION ALL
 					--
@@ -4942,6 +4983,7 @@ USE [master];
 					WHEN PATINDEX('%Kindly restrict the data/log files on @oldVolume before using @generateCapacityException option.%',ERROR_MESSAGE()) > 0
 					THEN 'Files Growth Yet to be Restricted'
 					WHEN ERROR_MESSAGE() = 'Volume configuration is not per standard. Kindly perform the activity manually.'
+						 OR ERROR_MESSAGE() LIKE '%PowerShell is not found on this server.'
 					THEN 'Not Supported'
 					WHEN ERROR_MESSAGE() = 'Backup job is running. So kindly create/restrict files later.'
 					THEN 'Backup Job is running.'
