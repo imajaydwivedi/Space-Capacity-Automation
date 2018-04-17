@@ -3,7 +3,7 @@ GO
 IF OBJECT_ID('dbo.usp_AnalyzeSpaceCapacity') IS NULL
   EXEC ('CREATE PROCEDURE dbo.usp_AnalyzeSpaceCapacity AS RETURN 0;')
 GO
---	EXEC tempdb..[usp_AnalyzeSpaceCapacity] @help = 1 
+--	EXEC tempdb..[usp_AnalyzeSpaceCapacity] @help = 1
 /*	
 DECLARE	@_errorOccurred BIT; 
 EXEC @_errorOccurred = [dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newVolume = 'E:\Data6\' ,@oldVolume = 'E:\Data5\' 
@@ -125,7 +125,7 @@ BEGIN
 	DECLARE	@_logicalCores TINYINT
 			,@_fileCounts TINYINT
 			,@_maxFileNO TINYINT
-			,@_counts_of_Files_To_Be_Created TINYINT
+			,@_counts_of_Files_To_Be_Created SMALLINT
 			,@_jobTimeThreshold_in_Hrs INT;
 
 	/*	There are many bugs with system stored procedure [dbo].[sp_MSforeachdb].
@@ -272,6 +272,7 @@ BEGIN
 	(
 		[fileNo] INT IDENTITY(1,1),
 		[DBName] [varchar](255) NULL,
+		[FileId] TINYINT,
 		[LogicalName] [varchar](255) NOT NULL,
 		[physical_name] [nvarchar](260) NOT NULL,
 		[FileSize_MB] [numeric](18, 6) NULL,
@@ -2528,7 +2529,7 @@ BEGIN
 
 		-- VALUES constructor method does not work in SQL 2005. So using UNION ALL
 		SELECT	[Parameter Name], [Data Type], [Default Value], [Parameter Description]
-		FROM	(SELECT	'!~~~ Version ~~~~!' as [Parameter Name],'Information' as [Data Type],'3.6.1' as [Default Value],'Last Updated - 16/Apr/2018' as [Parameter Description]
+		FROM	(SELECT	'!~~~ Version ~~~~!' as [Parameter Name],'Information' as [Data Type],'3.6.2' as [Default Value],'Last Updated - 17/Apr/2018' as [Parameter Description]
 					--
 				UNION ALL
 					--
@@ -4536,11 +4537,15 @@ ALTER DATABASE ['+DbName+'] MODIFY FILE ( NAME = N'''+[FileName]+''', SIZE = '+C
 			ELSE
 				PRINT '/********* '+ @_loopSQLText+'			*/';
 		END
+
+		SET @_logicalCores = (select cpu_count from sys.dm_os_sys_info);
+		IF @verbose = 1
+			PRINT	'	Logical CPU = '+CAST(@_logicalCores AS VARCHAR(10));
 			
 		--	Get TempDb data files
 		INSERT @tempDBFiles
-			([DBName], [LogicalName], [physical_name], [FileSize_MB], [Volume], [VolumeName], [VolumeSize_MB])
-		SELECT	DB_NAME(mf.database_id) as DBName, mf.name as LogicalName, mf.physical_name, ((mf.size*8.0)/1024) as FileSize_MB, 
+			([DBName], FileId, [LogicalName], [physical_name], [FileSize_MB], [Volume], [VolumeName], [VolumeSize_MB])
+		SELECT	DB_NAME(mf.database_id) as DBName, mf.file_id, mf.name as LogicalName, mf.physical_name, ((mf.size*8.0)/1024) as FileSize_MB, 
 				s.Volume, s.VolumeName, s.[capacity(MB)] as VolumeSize_MB
 		FROM	sys.master_files as mf
 		CROSS APPLY
@@ -4555,6 +4560,12 @@ ALTER DATABASE ['+DbName+'] MODIFY FILE ( NAME = N'''+[FileName]+''', SIZE = '+C
 		ORDER BY mf.[file_id] ASC;
 
 		IF @verbose = 1
+			PRINT	'	Updating @tempDBFiles.[isToBeDeleted] when Files are more then @_logicalCores';
+		UPDATE @tempDBFiles
+		SET isToBeDeleted = 1
+		WHERE cast(fileNo as int)-cast(@_logicalCores as int) > 0;
+
+		IF @verbose = 1
 		BEGIN
 			SELECT	RunningQuery, tf.*
 			FROM  (SELECT 'SELECT * FROM @tempDBFiles' AS RunningQuery) AS Qry
@@ -4563,21 +4574,13 @@ ALTER DATABASE ['+DbName+'] MODIFY FILE ( NAME = N'''+[FileName]+''', SIZE = '+C
 			ON	1 = 1;
 		END
 
-		SET @_logicalCores = (select cpu_count from sys.dm_os_sys_info);
-		--	SET @_logicalCores = @_logicalCores + 1;
-		IF @verbose = 1
-			PRINT	'	Logical CPU = '+CAST(@_logicalCores AS VARCHAR(10));
-
 		-- Get Integer value for [tempdb] data files. For example, value would be 8 from file name [tempdev8].
 		SET @_maxFileNO = (SELECT MAX( CAST(RIGHT(REPLACE(REPLACE(LogicalName,']',''),'[',''),PATINDEX('%[a-zA-Z_ ]%',REVERSE(REPLACE(REPLACE(LogicalName,']',''),'[','')))-1) AS BIGINT)) FROM @tempDBFiles);
-
-		IF @verbose = 1
-			PRINT	'	@_maxFileNO for Tempdb files = '+CAST(@_maxFileNO AS VARCHAR(10));
 
 		--	Get count of Valid tempdb data files
 		SET @_fileCounts = (SELECT COUNT(*) FROM @tempDBFiles as f WHERE [isToBeDeleted] = 0);
 		IF @verbose = 1
-			PRINT	'	Current Valid TempDB data files (@_fileCounts) = '+CAST(@_fileCounts AS VARCHAR(10));
+			PRINT	'	Valid files (@_fileCounts) = '+CAST(@_fileCounts AS VARCHAR(10));
 
 		IF @_fileCounts <> (CASE WHEN @_logicalCores >= 8 THEN 8 ELSE @_logicalCores END)
 			SET @_counts_of_Files_To_Be_Created = (CASE WHEN @_logicalCores >= 8 THEN 8 ELSE @_logicalCores END) - @_fileCounts;
@@ -4607,7 +4610,7 @@ ALTER DATABASE ['+DbName+'] MODIFY FILE ( NAME = N'''+[FileName]+''', SIZE = '+C
 				SELECT	COALESCE(tf.DBName, df.DBName) as DBName,
 						COALESCE(tf.LogicalName,'tempdev'+ cast( (@_maxFileNO+df.FileNo_Add) as varchar(3) )) as LogicalName,
 						COALESCE(tf.physical_name,df.Volume + 'tempdb'+ cast( (@_maxFileNO+df.FileNo_Add) as varchar(3) ) + '.ndf') as physical_name,
-						COALESCE(tf.FileSize_MB,8000) AS FileSize_MB,
+						COALESCE(tf.FileSize_MB,200) AS FileSize_MB,
 						COALESCE(tf.Volume,df.Volume) AS Volume, 
 						COALESCE(tf.VolumeName,df.VolumeName) AS VolumeName, 
 						COALESCE(tf.VolumeSize_MB, df.VolumeSize_MB) AS VolumeSize_MB,
