@@ -63,6 +63,18 @@
           <ConnectionProtocol>NotSpecified</ConnectionProtocol>
           <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
         </ConnectionNode>
+        <ConnectionNode Name="TUL1DBAPFS2:CORPORATE\adwivedi">
+          <Created>2018-04-18T12:55:22.1994091+05:30</Created>
+          <Type>SQL</Type>
+          <Server>TUL1DBAPFS2</Server>
+          <UserName />
+          <Authentication>Windows Authentication</Authentication>
+          <InitialDB />
+          <LoginTimeout>30</LoginTimeout>
+          <ExecutionTimeout>0</ExecutionTimeout>
+          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
+          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
+        </ConnectionNode>
         <ConnectionNode Name="TUL1DBAPMTDB1:CORPORATE\adwivedi">
           <Created>2018-04-04T14:31:47.7107002+05:30</Created>
           <Type>SQL</Type>
@@ -80,9 +92,9 @@
     <LogicalFolder Name="Queries" Type="0" Sorted="true">
       <Items>
         <FileNode Name="dbo.usp_AnalyzeSpaceCapacity.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SQL-A:False:sa</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>SQL-A</AssociatedConnSrvName>
-          <AssociatedConnUserName>sa</AssociatedConnUserName>
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:TUL1DBAPFS2:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>TUL1DBAPFS2</AssociatedConnSrvName>
+          <AssociatedConnUserName />
           <FullPath>dbo.usp_AnalyzeSpaceCapacity.sql</FullPath>
         </FileNode>
         <FileNode Name="Dummy.sql">

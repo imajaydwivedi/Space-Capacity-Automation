@@ -19,11 +19,13 @@ BEGIN
 	/*
 		Created By:		Ajay Dwivedi
 		Updated on:		22-Mar-2018
-		Current Ver:	3.6.1 - Fixed Below Issues
+		Current Ver:	3.6.3 - Fixed Below Issues
 						Made procedure compatible with SQL 2005
 						Issue# 07) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/7
 						Issue# 08) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/8
 						Issue# 09) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/9
+						Issue# 10) Error while executing the script to modify tempdb files
+						Issue# 11) Incorrect File Path for tempdb files with @expandTempDBSize
 		Purpose:		This procedure can be used to generate automatic TSQL code for working with ESCs like 'DBSEP1234- Data- Create and Restrict Database File Names' type.
 	*/
 
@@ -1799,7 +1801,7 @@ BEGIN
 /*	******************** Begin:	@getVolumeSpaceConsumers = 1 *****************************/';
 
 			--	Begin: Get All the files from @oldVolume
-			SET @_powershellCMD =  'powershell.exe -c "Get-ChildItem -Path '''+@oldVolume+''' -Recurse -File -Force -ErrorAction SilentlyContinue | Select-Object   Name, @{l=''ParentPath'';e={$_.DirectoryName}}, @{l=''SizeBytes'';e={$_.Length}}, @{l=''Owner'';e={((Get-ACL $_.FullName).Owner)}}, CreationTime, LastAccessTime, LastWriteTime, @{l=''IsFolder'';e={if($_.PSIsContainer) {1} else {0}}} | foreach{ $_.Name + ''|'' + $_.ParentPath + ''|'' + $_.SizeBytes + ''|'' + $_.Owner + ''|'' + $_.CreationTime + ''|'' + $_.LastAccessTime + ''|'' + $_.LastWriteTime + ''|'' + $_.IsFolder }"';
+			SET @_powershellCMD =  'powershell.exe -c "Get-ChildItem -Path '''+@oldVolume+''' -Recurse -Force -ErrorAction SilentlyContinue | Where-Object {$_.PSIsContainer -eq $false} | Select-Object   Name, @{l=''ParentPath'';e={$_.DirectoryName}}, @{l=''SizeBytes'';e={$_.Length}}, @{l=''Owner'';e={((Get-ACL $_.FullName).Owner)}}, CreationTime, LastAccessTime, LastWriteTime, @{l=''IsFolder'';e={if($_.PSIsContainer) {1} else {0}}} | foreach{ $_.Name + ''|'' + $_.ParentPath + ''|'' + $_.SizeBytes + ''|'' + $_.Owner + ''|'' + $_.CreationTime + ''|'' + $_.LastAccessTime + ''|'' + $_.LastWriteTime + ''|'' + $_.IsFolder }"';
 
 			-- Clear previous output
 			DELETE @output;
@@ -1966,8 +1968,8 @@ BEGIN
 				PIVOT (MAX([Value]) FOR [Column] IN (Name, ParentPath, SizeBytes, Owner, CreationTime, LastAccessTime, LastWriteTime, IsFolder)) as pvt
 				--ORDER BY LINE
 			)
-			INSERT #VolumeFiles
-				( Name, ParentPath, SizeBytes, Owner, CreationTime, LastAccessTime, LastWriteTime, IsFile )
+			--INSERT #VolumeFiles
+			--	( Name, ParentPath, SizeBytes, Owner, CreationTime, LastAccessTime, LastWriteTime, IsFile )
 			SELECT	Name, --[ParentPathID] = DENSE_RANK()OVER(ORDER BY ParentPath)
 					ParentPath, SizeBytes, Owner, LTRIM(RTRIM(CreationTime)) AS CreationTime, 
 					LTRIM(RTRIM(LastAccessTime)) AS LastAccessTime, LTRIM(RTRIM(LastWriteTime)) AS LastWriteTime
@@ -1982,7 +1984,7 @@ BEGIN
 			END
 
 			--	Begin: Get All folders from @oldVolume
-			SET @_powershellCMD =  'powershell.exe -c "Get-ChildItem -Path '''+@oldVolume+''' -Recurse -Directory -Force -ErrorAction SilentlyContinue | Select-Object   FullName, @{l=''Owner'';e={((Get-ACL $_.FullName).Owner)}}, CreationTime, LastAccessTime, LastWriteTime | foreach{ $_.FullName + ''|'' + $_.Owner + ''|'' + $_.CreationTime + ''|'' + $_.LastAccessTime + ''|'' + $_.LastWriteTime }"';
+			SET @_powershellCMD =  'powershell.exe -c "Get-ChildItem -Path '''+@oldVolume+''' -Recurse -Force -ErrorAction SilentlyContinue | Where-Object {$_.PSIsContainer} | Select-Object   FullName, @{l=''Owner'';e={((Get-ACL $_.FullName).Owner)}}, CreationTime, LastAccessTime, LastWriteTime | foreach{ $_.FullName + ''|'' + $_.Owner + ''|'' + $_.CreationTime + ''|'' + $_.LastAccessTime + ''|'' + $_.LastWriteTime }"';
 
 			-- Clear previous output
 			DELETE @output;
@@ -2529,7 +2531,7 @@ BEGIN
 
 		-- VALUES constructor method does not work in SQL 2005. So using UNION ALL
 		SELECT	[Parameter Name], [Data Type], [Default Value], [Parameter Description]
-		FROM	(SELECT	'!~~~ Version ~~~~!' as [Parameter Name],'Information' as [Data Type],'3.6.2' as [Default Value],'Last Updated - 17/Apr/2018' as [Parameter Description]
+		FROM	(SELECT	'!~~~ Version ~~~~!' as [Parameter Name],'Information' as [Data Type],'3.6.3' as [Default Value],'Last Updated - 19/Apr/2018' as [Parameter Description]
 					--
 				UNION ALL
 					--
@@ -4609,7 +4611,7 @@ ALTER DATABASE ['+DbName+'] MODIFY FILE ( NAME = N'''+[FileName]+''', SIZE = '+C
 		FROM  (
 				SELECT	COALESCE(tf.DBName, df.DBName) as DBName,
 						COALESCE(tf.LogicalName,'tempdev'+ cast( (@_maxFileNO+df.FileNo_Add) as varchar(3) )) as LogicalName,
-						COALESCE(tf.physical_name,df.Volume + 'tempdb'+ cast( (@_maxFileNO+df.FileNo_Add) as varchar(3) ) + '.ndf') as physical_name,
+						COALESCE(tf.physical_name,LEFT(df.physical_name,LEN(df.physical_name)-CHARINDEX('\',REVERSE(df.physical_name))+1) +'tempdb'+ cast( (@_maxFileNO+df.FileNo_Add) as varchar(3) ) + '.ndf') as physical_name,
 						COALESCE(tf.FileSize_MB,200) AS FileSize_MB,
 						COALESCE(tf.Volume,df.Volume) AS Volume, 
 						COALESCE(tf.VolumeName,df.VolumeName) AS VolumeName, 
@@ -4637,7 +4639,7 @@ ALTER DATABASE ['+DbName+'] MODIFY FILE ( NAME = N'''+[FileName]+''', SIZE = '+C
 							UNION ALL
 							SELECT 8) AS FileIterator_Table
 						CROSS JOIN
-						(SELECT TOP 1 * FROM @tempDBFiles WHERE [isToBeDeleted] = 0 ORDER BY LogicalName DESC) AS t
+						(SELECT TOP 1 * FROM @tempDBFiles WHERE [isToBeDeleted] = 0 ORDER BY FileId DESC) AS t
 						WHERE	FileIterator_Table.FileNo_Add <= @_counts_of_Files_To_Be_Created
 						AND @output4IdealScenario = 1
 					) AS df
