@@ -3,54 +3,6 @@
   <Items>
     <LogicalFolder Name="Connections" Type="2" Sorted="true">
       <Items>
-        <ConnectionNode Name="BAN-2ADWIVEDI-L:sa">
-          <Created>2018-03-20T11:02:11.6035865+05:30</Created>
-          <Type>SQL</Type>
-          <Server>BAN-2ADWIVEDI-L</Server>
-          <UserName>sa</UserName>
-          <Authentication>SQL</Authentication>
-          <InitialDB />
-          <LoginTimeout>30</LoginTimeout>
-          <ExecutionTimeout>0</ExecutionTimeout>
-          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
-          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
-        </ConnectionNode>
-        <ConnectionNode Name="Preeti-Win10:sa">
-          <Created>2018-03-23T07:15:24.6084002+05:30</Created>
-          <Type>SQL</Type>
-          <Server>Preeti-Win10</Server>
-          <UserName>sa</UserName>
-          <Authentication>SQL</Authentication>
-          <InitialDB />
-          <LoginTimeout>30</LoginTimeout>
-          <ExecutionTimeout>0</ExecutionTimeout>
-          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
-          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
-        </ConnectionNode>
-        <ConnectionNode Name="SQL-A:sa">
-          <Created>2018-03-21T16:35:22.1988009+05:30</Created>
-          <Type>SQL</Type>
-          <Server>SQL-A</Server>
-          <UserName>sa</UserName>
-          <Authentication>SQL</Authentication>
-          <InitialDB />
-          <LoginTimeout>30</LoginTimeout>
-          <ExecutionTimeout>0</ExecutionTimeout>
-          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
-          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
-        </ConnectionNode>
-        <ConnectionNode Name="TUL1CIPBZDB2:CORPORATE\adwivedi">
-          <Created>2018-04-16T10:19:19.0416073+05:30</Created>
-          <Type>SQL</Type>
-          <Server>TUL1CIPBZDB2</Server>
-          <UserName />
-          <Authentication>Windows Authentication</Authentication>
-          <InitialDB />
-          <LoginTimeout>30</LoginTimeout>
-          <ExecutionTimeout>0</ExecutionTimeout>
-          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
-          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
-        </ConnectionNode>
         <ConnectionNode Name="TUL1CIPCNPDB1:CORPORATE\adwivedi">
           <Created>2018-04-04T16:18:08.381561+05:30</Created>
           <Type>SQL</Type>
@@ -63,51 +15,45 @@
           <ConnectionProtocol>NotSpecified</ConnectionProtocol>
           <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
         </ConnectionNode>
-        <ConnectionNode Name="TUL1DBAPFS2:CORPORATE\adwivedi">
-          <Created>2018-04-18T12:55:22.1994091+05:30</Created>
-          <Type>SQL</Type>
-          <Server>TUL1DBAPFS2</Server>
-          <UserName />
-          <Authentication>Windows Authentication</Authentication>
-          <InitialDB />
-          <LoginTimeout>30</LoginTimeout>
-          <ExecutionTimeout>0</ExecutionTimeout>
-          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
-          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
-        </ConnectionNode>
-        <ConnectionNode Name="TUL1DBAPMTDB1:CORPORATE\adwivedi">
-          <Created>2018-04-04T14:31:47.7107002+05:30</Created>
-          <Type>SQL</Type>
-          <Server>TUL1DBAPMTDB1</Server>
-          <UserName />
-          <Authentication>Windows Authentication</Authentication>
-          <InitialDB />
-          <LoginTimeout>30</LoginTimeout>
-          <ExecutionTimeout>0</ExecutionTimeout>
-          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
-          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
-        </ConnectionNode>
       </Items>
     </LogicalFolder>
     <LogicalFolder Name="Queries" Type="0" Sorted="true">
       <Items>
+        <FileNode Name="DBCC-SHRINKFILE-Output.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:TUL1CIPCNPDB1:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>TUL1CIPCNPDB1</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>DBCC-SHRINKFILE-Output.sql</FullPath>
+        </FileNode>
         <FileNode Name="dbo.usp_AnalyzeSpaceCapacity.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:TUL1DBAPFS2:True</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>TUL1DBAPFS2</AssociatedConnSrvName>
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:TUL1CIPCNPDB1:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>TUL1CIPCNPDB1</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>dbo.usp_AnalyzeSpaceCapacity.sql</FullPath>
         </FileNode>
         <FileNode Name="Dummy.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:TUL1DBAPMTDB1:True</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>TUL1DBAPMTDB1</AssociatedConnSrvName>
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:TUL1CIPCNPDB1:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>TUL1CIPCNPDB1</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>Dummy.sql</FullPath>
         </FileNode>
+        <FileNode Name="Extra Codes.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:TUL1CIPCNPDB1:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>TUL1CIPCNPDB1</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>Extra Codes.sql</FullPath>
+        </FileNode>
         <FileNode Name="v3.6 - Automation - Restrict File growth.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:TUL1CIPBZDB2:True</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>TUL1CIPBZDB2</AssociatedConnSrvName>
+          <AssociatedConnectionMoniker />
+          <AssociatedConnSrvName />
           <AssociatedConnUserName />
           <FullPath>v3.6 - Automation - Restrict File growth.sql</FullPath>
+        </FileNode>
+        <FileNode Name="v3.7 - Automation - Restrict File growth.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:TUL1CIPCNPDB1:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>TUL1CIPCNPDB1</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>v3.7 - Automation - Restrict File growth.sql</FullPath>
         </FileNode>
       </Items>
     </LogicalFolder>
