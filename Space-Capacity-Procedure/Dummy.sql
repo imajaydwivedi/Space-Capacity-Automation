@@ -1,11 +1,12 @@
 USE DBA;
---EXEC DBA..[usp_AnalyzeSpaceCapacity] @help = 1
+EXEC DBA..[usp_AnalyzeSpaceCapacity] @help = 1
 --EXEC DBA..[usp_AnalyzeSpaceCapacity] @getLogInfo = 1,@verbose = 1
+/*
 EXEC DBA..[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1 ,@vlfCountThreshold = 100 
-									--,@verbose = 1 
+									,@verbose = 1 
 									,@DBs2Consider = 'VestaMusicProcessing' 
-									,@forceExecute = 1
-
+									--,@forceExecute = 1
+*/
 /*
 MODIFY FILE failed for file "prism_log". At least one property per file must be specified.
 

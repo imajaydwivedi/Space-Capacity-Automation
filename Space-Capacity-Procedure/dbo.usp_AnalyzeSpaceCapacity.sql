@@ -1,9 +1,8 @@
-USE tempdb
-GO
+USE DBA;
 IF OBJECT_ID('dbo.usp_AnalyzeSpaceCapacity') IS NULL
   EXEC ('CREATE PROCEDURE dbo.usp_AnalyzeSpaceCapacity AS RETURN 0;')
 GO
---	EXEC tempdb..[usp_AnalyzeSpaceCapacity] @help = 1
+--	EXEC [dbo].[usp_AnalyzeSpaceCapacity] @help = 1
 /*	
 DECLARE	@_errorOccurred BIT; 
 EXEC @_errorOccurred = [dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newVolume = 'E:\Data6\' ,@oldVolume = 'E:\Data5\' 
@@ -11,21 +10,16 @@ EXEC @_errorOccurred = [dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newV
 SELECT CASE WHEN @_errorOccurred = 1 THEN 'fail' ELSE 'pass' END AS [Pass/Fail];
 */
 ALTER PROCEDURE [dbo].[usp_AnalyzeSpaceCapacity]
-	@getInfo BIT = 0, @getLogInfo BIT = 0, @volumeInfo BIT = 0, @help BIT = 0, @addDataFiles BIT = 0, @addLogFiles BIT = 0, @restrictDataFileGrowth BIT = 0, @restrictLogFileGrowth BIT = 0, @generateCapacityException BIT = 0, @unrestrictFileGrowth BIT = 0, @removeCapacityException BIT = 0, @UpdateMountPointSecurity BIT = 0, @restrictMountPointGrowth BIT = 0, @expandTempDBSize BIT = 0, @optimizeLogFiles BIT = 0, @getVolumeSpaceConsumers BIT = 0,
-	@newVolume VARCHAR(200) = NULL, @oldVolume VARCHAR(200) = NULL, @mountPointGrowthRestrictionPercent TINYINT = 79, @tempDBMountPointPercent TINYINT = NULL, @tempDbMaxSizeThresholdInGB INT = NULL, @DBs2Consider VARCHAR(1000) = NULL, @mountPointFreeSpaceThreshold_GB INT = 60
+	@getInfo BIT = 0, @getLogInfo BIT = 0, @volumeInfo BIT = 0, @help BIT = 0, @addDataFiles BIT = 0, @addLogFiles BIT = 0, @optimizeLogFiles BIT = 0, @restrictDataFileGrowth BIT = 0, @restrictLogFileGrowth BIT = 0, @generateCapacityException BIT = 0, @generateLogBackup BIT = 0, @unrestrictFileGrowth BIT = 0, @removeCapacityException BIT = 0, @UpdateMountPointSecurity BIT = 0, @restrictMountPointGrowth BIT = 0, @expandTempDBSize BIT = 0, @getVolumeSpaceConsumers BIT = 0,
+	@newVolume VARCHAR(200) = NULL, @oldVolume VARCHAR(200) = NULL, @mountPointGrowthRestrictionPercent TINYINT = 79, @tempDBMountPointPercent TINYINT = NULL, @tempDbMaxSizeThresholdInGB INT = NULL, @DBs2Consider VARCHAR(1000) = NULL, @mountPointFreeSpaceThreshold_GB INT = 60, @vlfCountThreshold INT = 500
 	,@verbose BIT = 0 ,@testAllOptions BIT = 0 ,@forceExecute BIT = 0 ,@allowMultiVolumeUnrestrictedFiles BIT = 0 ,@output4IdealScenario BIT = 0, @handleXPCmdShell BIT = 0, @sortBySize BIT = 0
 AS
 BEGIN
 	/*
 		Created By:		Ajay Dwivedi
 		Updated on:		22-Mar-2018
-		Current Ver:	3.6.3 - Fixed Below Issues
-						Made procedure compatible with SQL 2005
-						Issue# 07) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/7
-						Issue# 08) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/8
-						Issue# 09) https://github.com/imajaydwivedi/Space-Capacity-Automation/issues/9
-						Issue# 10) Error while executing the script to modify tempdb files
-						Issue# 11) Incorrect File Path for tempdb files with @expandTempDBSize
+		Current Ver:	3.7 - Fixed Below Issues as per MileStone v3.7 - Release of Apr 2019
+						Issue# 03) @optimizeLogFiles - Regrow Log files by Reducing High VLF Count
 		Purpose:		This procedure can be used to generate automatic TSQL code for working with ESCs like 'DBSEP1234- Data- Create and Restrict Database File Names' type.
 	*/
 
@@ -90,6 +84,10 @@ BEGIN
 			,@_loopCounter SMALLINT
 			,@_loopCounts SMALLINT
 			,@_loopSQLText VARCHAR(MAX)
+			,@_loopSQLText_BackupLog VARCHAR(MAX)
+			,@_loopSQLText_DbccShrinkFile VARCHAR(MAX)
+			,@_loopSQLText_AlterDbModifySize VARCHAR(MAX)
+			,@_loopSQLText_AlterDbAutoGrowth VARCHAR(MAX)
 			,@_dbName varchar (255)
 			,@_fileGroup varchar (255)
 			,@_name varchar (255)
@@ -219,7 +217,7 @@ BEGIN
 	DECLARE @Databases TABLE (ID INT IDENTITY(1,1), DBName VARCHAR(200));
 	DECLARE	@DatabasesBySize TABLE (DBName varchar (255), database_id SMALLINT, [Size (GB)] DECIMAL(20,2));
 	DECLARE	@T_DatabasesNotAccessible TABLE (database_id SMALLINT, DBName varchar (255));
-	DECLARE @filterDatabaseNames TABLE (DBName varchar (255)); -- This table will be used if multiple Database names are supplied in @DBsToConsider parameter
+	DECLARE @filterDatabaseNames TABLE (DBName varchar (255), Category AS (CASE WHEN LEFT(DBName,1) = '-' THEN 'NOT IN' ELSE 'IN' END), _DBName AS RIGHT(DBName,LEN(DBName)-1)); -- This table will be used if multiple Database names are supplied in @DBsToConsider parameter
 	DECLARE @oldVolumeNames TABLE (ID INT IDENTITY(1,1), oldVolume VARCHAR(20)); -- This table will be used if multiple volumes are supplied in @oldVolume parameter
 	DECLARE @DBFiles TABLE
 	(
@@ -341,6 +339,20 @@ BEGIN
 		[LastWriteTime] DATETIME NULL,
 		[IsFolder] BIT NULL DEFAULT 1
 	);
+
+	-- Variables for @optimizeLogFiles
+	DECLARE @T_DbccShrinkFile_Raw TABLE (ID INT IDENTITY(1,1), output varchar(4000));
+	DECLARE @T_DbccShrinkFile TABLE ( [DBID] int, FileID int, CurrentSize BIGINT, MinimumSize BIGINT, UsedPages BIGINT, EstimatedPages BIGINT );
+	DECLARE @_sqlcmdCommand   VARCHAR(1000);
+	DECLARE @_DbccShrinkFile_RawText VARCHAR(4000); -- for Extracting Data from Raw output of DBCC SHRINKFILE Command (@t_DbccShrinkFile_Raw)
+	DECLARE @_num VARCHAR(10) = '%[0-9.,]%';
+	DECLARE @_oth VARCHAR(10) = '%[^0-9.,]%';
+	DECLARE @_spaceReleasedBySHRINKFILE_MB BIGINT;
+	DECLARE @_DbSizeAfterShrink_MB BIGINT;
+
+	IF OBJECT_ID('tempdb..#T_DbccShrinkFile_LineSplit') IS NOT NULL
+		DROP TABLE #T_DbccShrinkFile_LineSplit;
+	CREATE TABLE #T_DbccShrinkFile_LineSplit(IND SMALLINT, NUM BIGINT)
 	
 	BEGIN TRY	-- Try Catch for executable blocks that may throw error
 		IF @verbose = 1
@@ -356,7 +368,7 @@ BEGIN
 			PRINT	'
 /*	******************** BEGIN: Validations *****************************/';
 
-		IF	(@help=1 OR @volumeInfo=1 OR @addDataFiles=1 OR @addLogFiles=1 OR @restrictDataFileGrowth=1 OR @restrictLogFileGrowth=1 OR @generateCapacityException=1 OR @unrestrictFileGrowth=1 OR @removeCapacityException=1 OR @UpdateMountPointSecurity=1 OR @restrictMountPointGrowth=1 OR @expandTempDBSize=1 OR @optimizeLogFiles=1 OR @getVolumeSpaceConsumers=1)
+		IF	(@help=1 OR @volumeInfo=1 OR @addDataFiles=1 OR @addLogFiles=1 OR @optimizeLogFiles=1 OR @restrictDataFileGrowth=1 OR @restrictLogFileGrowth=1 OR @generateCapacityException=1 OR @unrestrictFileGrowth=1 OR @removeCapacityException=1 OR @UpdateMountPointSecurity=1 OR @restrictMountPointGrowth=1 OR @expandTempDBSize=1 OR @optimizeLogFiles=1 OR @getVolumeSpaceConsumers=1)
 		BEGIN	
 			SET	@getInfo = 0;
 			SET @getLogInfo = 0;
@@ -371,7 +383,7 @@ BEGIN
 			PRINT	'	Evaluation value of @_LogOrData variable';
 		IF (@addDataFiles=1 OR @restrictDataFileGrowth=1 OR @getInfo=1)
 			SET @_LogOrData = 'Data';
-		ELSE IF (@restrictLogFileGrowth=1 OR @addLogFiles=1 OR @getLogInfo=1)
+		ELSE IF (@restrictLogFileGrowth=1 OR @addLogFiles=1 OR @getLogInfo=1 or @optimizeLogFiles=1)
 			SET @_LogOrData = 'Log';
 		ELSE IF @oldVolume IS NOT NULL AND EXISTS (SELECT * FROM sys.master_files as mf WHERE mf.physical_name LIKE (@oldVolume+'%') AND type_desc = 'ROWS')
 			SET @_LogOrData = 'Data';
@@ -413,6 +425,8 @@ BEGIN
 			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @getInfo = 1';
 		ELSE IF @getLogInfo = 1
 			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @getLogInfo = 1';
+		ELSE IF  @optimizeLogFiles = 1
+			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @optimizeLogFiles = 1';
 		ELSE IF @help = 1
 			SET @_procSTMT_Being_Executed = @_procSTMT_Being_Executed + ' @help = 1';
 		ELSE IF @addDataFiles = 1
@@ -619,10 +633,13 @@ BEGIN
 				)
 				INSERT @filterDatabaseNames
 				SELECT LTRIM(RTRIM(DBName)) FROM t1;
+
+				IF @verbose = 1
+					SELECT 'select * from @filterDatabaseNames' AS Query, * FROM @filterDatabaseNames;
 			END
 
 			--	Check if xp_cmdshell has to be enabled
-			IF (@handleXPCmdShell = 1)
+			IF (@handleXPCmdShell = 1 AND @optimizeLogFiles <> 1)
 			BEGIN
 				select @_configurationValue_CmdShell = CAST(value AS TINYINT) from sys.configurations as c where c.name = 'xp_cmdshell';
 
@@ -663,178 +680,182 @@ BEGIN
 			END
 
 			--inserting disk name, Label, total space and free space value in to temporary table
-			INSERT @output
-			EXEC xp_cmdshell @_powershellCMD;
-
-			IF @verbose = 1
+			IF @optimizeLogFiles <> 1
 			BEGIN
-				PRINT	'	SELECT * FROM @output';
-				SELECT 'SELECT * FROM @output' AS RunningQuery,* FROM @output;
-			END
+				INSERT @output
+				EXEC xp_cmdshell @_powershellCMD;
 
-			--	Check if some volume exists in @mountPointVolumes
-			IF EXISTS (SELECT * FROM @output WHERE line LIKE '''powershell.exe'' is not recognized as an internal or external command%') 
-			BEGIN
-				SELECT	@_errorMSG = 'You are using '+i.SQLVersionBuild+' on '+i.WindowsVersionBuild+'. PowerShell is not found on this server.'
-				FROM  (
-						SELECT	SERVERPROPERTY('ServerName') AS [SQLServerName]
-								, SERVERPROPERTY('ProductVersion') AS [SQLProductVersion]
-								, SERVERPROPERTY('ProductMajorVersion') AS [ProductMajorVersion]
-								, SERVERPROPERTY('ProductMinorVersion') AS [ProductMinorVersion]
-								, SERVERPROPERTY('ProductBuild') AS [ProductBuild]
-								, CASE LEFT(CONVERT(VARCHAR, SERVERPROPERTY('ProductVersion')),4) 
-								   WHEN '8.00' THEN 'SQL Server 2000'
-								   WHEN '9.00' THEN 'SQL Server 2005'
-								   WHEN '10.0' THEN 'SQL Server 2008'
-								   WHEN '10.5' THEN 'SQL Server 2008 R2'
-								   WHEN '11.0' THEN 'SQL Server 2012'
-								   WHEN '12.0' THEN 'SQL Server 2014'
-								   ELSE 'SQL Server 2016+'
-								  END AS [SQLVersionBuild]
-								, SERVERPROPERTY('ProductLevel') AS [SQLServicePack]
-								, SERVERPROPERTY('Edition') AS [SQLEdition]
-								, RIGHT(SUBSTRING(@@VERSION, CHARINDEX('Windows NT', @@VERSION), 14), 3) as [WindowsVersionNumber]
-								, CASE RIGHT(SUBSTRING(@@VERSION, CHARINDEX('Windows NT', @@VERSION), 14), 3)
-								   WHEN '5.0' THEN 'Windows 2000'
-								   WHEN '5.1' THEN 'Windows XP'
-								   WHEN '5.2' THEN 'Windows Server 2003/2003 R2'
-								   WHEN '6.0' THEN 'Windows Server 2008/Windows Vista'
-								   WHEN '6.1' THEN 'Windows Server 2008 R2/Windows 7'
-								   WHEN '6.2' THEN 'Windows Server 2012/Windows 8'
-								   ELSE 'Windows 2012 R2+'
-								  END AS [WindowsVersionBuild]
-					  ) AS i;
-				--SET @_errorMSG = 'Volume configuration is not per standard. Kindly perform the activity manually.';
+				IF @verbose = 1
+				BEGIN
+					PRINT	'	SELECT * FROM @output';
+					SELECT 'SELECT * FROM @output' AS RunningQuery,* FROM @output;
+				END
 			
-				IF (select CAST(LEFT(CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)),charindex('.',CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)))-1) AS INT)) >= 12
-					EXEC sp_executesql N'THROW 50000,@_errorMSG,1',N'@_errorMSG VARCHAR(200)', @_errorMSG;
-				ELSE
-					EXEC sp_executesql N'RAISERROR (@_errorMSG, 16, 1)', N'@_errorMSG VARCHAR(200)', @_errorMSG;
-			END
 
-			IF @verbose=1 
-				PRINT	'	Executing code to find Data/Log Mount Point Volumes';
-			;WITH t_RawData AS
-			(
-				SELECT	ID = 1, 
-						line, 
-						expression = left(line,CHARINDEX('|',line)-1), 
-						searchExpression = SUBSTRING ( line , CHARINDEX('|',line)+1, LEN(line)+1 ), 
-						delimitorPosition = CHARINDEX('|',SUBSTRING ( line , CHARINDEX('|',line)+1, LEN(line)+1 ))
-
-
-
-				FROM	@output
-				WHERE	line like '[A-Z][:]%'
-						--line like 'C:\%'
-				-- 
-				UNION all
-				--
-				SELECT	ID = ID + 1, 
-						line, 
-						expression = CASE WHEN delimitorPosition = 0 THEN searchExpression ELSE left(searchExpression,delimitorPosition-1) END, 
-						searchExpression = CASE WHEN delimitorPosition = 0 THEN NULL ELSE SUBSTRING(searchExpression,delimitorPosition+1,len(searchExpression)+1) END, 
-						delimitorPosition = CASE WHEN delimitorPosition = 0 THEN -1 ELSE CHARINDEX('|',SUBSTRING(searchExpression,delimitorPosition+1,len(searchExpression)+1)) END
-				FROM	t_RawData
-				WHERE	delimitorPosition >= 0
-			)
-			,T_Volumes AS 
-			(
-				SELECT	line, [Volume],[Label], [capacity(MB)],[freespace(MB)]
-				FROM (
-						SELECT	line, 
-								[Column] =	CASE	ID
-													WHEN 1
-													THEN 'Volume'
-													WHEN 2
-													THEN 'Label'
-													WHEN 3
-													THEN 'capacity(MB)'
-													WHEN 4
-													THEN 'freespace(MB)'
-													ELSE NULL
-													END,
-								[Value] = expression
-						FROM	t_RawData
-						) as up
-				PIVOT (MAX([Value]) FOR [Column] IN ([Volume],[Label], [capacity(MB)],[freespace(MB)])) as pvt
-				--ORDER BY LINE
-			)
-			INSERT INTO @mountPointVolumes
-			(Volume, [Label], [capacity(MB)], [freespace(MB)] ,VolumeName, [capacity(GB)], [freespace(GB)], [freespace(%)])
-			SELECT	Volume
-					,[Label]
-					,[capacity(MB)] = CAST([capacity(MB)] AS numeric(20,2))
-					,[freespace(MB)] = CAST([freespace(MB)] AS numeric(20,2)) 
-
-
-					,[Label] as VolumeName
-					,CAST((CAST([capacity(MB)] AS numeric(20,2))/1024.0) AS DECIMAL(20,2)) AS [capacity(GB)]
-					,CAST((CAST([freespace(MB)] AS numeric(20,2))/1024.0) AS DECIMAL(20,2)) AS [freespace(GB)]
-					,CAST((CAST([freespace(MB)] AS numeric(20,2))*100.0)/[capacity(MB)] AS DECIMAL(20,2)) AS [freespace(%)]
-			FROM	T_Volumes v
-			WHERE	v.Volume LIKE '[A-Z]:\Data\'
-				OR	v.Volume LIKE '[A-Z]:\Data[0-9]\'
-				OR	v.Volume LIKE '[A-Z]:\Data[0-9][0-9]\'
-				OR	v.Volume LIKE '[A-Z]:\Logs\'
-				OR	v.Volume LIKE '[A-Z]:\Logs[0-9]\'
-				OR	v.Volume LIKE '[A-Z]:\Logs[0-9][0-9]\'
-				OR	v.Volume LIKE '[A-Z]:\tempdb\'
-				OR	v.Volume LIKE '[A-Z]:\tempdb[0-9]\'
-				OR	v.Volume LIKE '[A-Z]:\tempdb[0-9][0-9]\'
-				OR	EXISTS (SELECT * FROM sys.master_files as mf WHERE mf.physical_name LIKE (Volume+'%'))
-				OR	(@volumeInfo = 1)
-				OR	@newVolume IS NOT NULL;
-
-			IF @verbose=1
-			BEGIN
-				PRINT	'	Values populated for @mountPointVolumes';
-				PRINT	'	SELECT * FROM @mountPointVolumes;'
-				SELECT 'SELECT * FROM @mountPointVolumes;' AS RunningQuery,* FROM @mountPointVolumes;
-			END
-
-			--	Check if some volume exists in @mountPointVolumes
-			IF NOT EXISTS (SELECT * FROM @mountPointVolumes v ) 
-			BEGIN
-				SET @_errorMSG = 'Volume configuration is not per standard. Kindly perform the activity manually.';
+				--	Check if some volume exists in @mountPointVolumes
+				IF EXISTS (SELECT * FROM @output WHERE line LIKE '''powershell.exe'' is not recognized as an internal or external command%') 
+				BEGIN
+					SELECT	@_errorMSG = 'You are using '+i.SQLVersionBuild+' on '+i.WindowsVersionBuild+'. PowerShell is not found on this server.'
+					FROM  (
+							SELECT	SERVERPROPERTY('ServerName') AS [SQLServerName]
+									, SERVERPROPERTY('ProductVersion') AS [SQLProductVersion]
+									, SERVERPROPERTY('ProductMajorVersion') AS [ProductMajorVersion]
+									, SERVERPROPERTY('ProductMinorVersion') AS [ProductMinorVersion]
+									, SERVERPROPERTY('ProductBuild') AS [ProductBuild]
+									, CASE LEFT(CONVERT(VARCHAR, SERVERPROPERTY('ProductVersion')),4) 
+									   WHEN '8.00' THEN 'SQL Server 2000'
+									   WHEN '9.00' THEN 'SQL Server 2005'
+									   WHEN '10.0' THEN 'SQL Server 2008'
+									   WHEN '10.5' THEN 'SQL Server 2008 R2'
+									   WHEN '11.0' THEN 'SQL Server 2012'
+									   WHEN '12.0' THEN 'SQL Server 2014'
+									   ELSE 'SQL Server 2016+'
+									  END AS [SQLVersionBuild]
+									, SERVERPROPERTY('ProductLevel') AS [SQLServicePack]
+									, SERVERPROPERTY('Edition') AS [SQLEdition]
+									, RIGHT(SUBSTRING(@@VERSION, CHARINDEX('Windows NT', @@VERSION), 14), 3) as [WindowsVersionNumber]
+									, CASE RIGHT(SUBSTRING(@@VERSION, CHARINDEX('Windows NT', @@VERSION), 14), 3)
+									   WHEN '5.0' THEN 'Windows 2000'
+									   WHEN '5.1' THEN 'Windows XP'
+									   WHEN '5.2' THEN 'Windows Server 2003/2003 R2'
+									   WHEN '6.0' THEN 'Windows Server 2008/Windows Vista'
+									   WHEN '6.1' THEN 'Windows Server 2008 R2/Windows 7'
+									   WHEN '6.2' THEN 'Windows Server 2012/Windows 8'
+									   ELSE 'Windows 2012 R2+'
+									  END AS [WindowsVersionBuild]
+						  ) AS i;
+					--SET @_errorMSG = 'Volume configuration is not per standard. Kindly perform the activity manually.';
 			
-				IF (select CAST(LEFT(CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)),charindex('.',CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)))-1) AS INT)) >= 12
-					EXEC sp_executesql N'THROW 50000,@_errorMSG,1',N'@_errorMSG VARCHAR(200)', @_errorMSG;
-				ELSE
-					EXEC sp_executesql N'RAISERROR (@_errorMSG, 16, 1)', N'@_errorMSG VARCHAR(200)', @_errorMSG;
-			END
+					IF (select CAST(LEFT(CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)),charindex('.',CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)))-1) AS INT)) >= 12
+						EXEC sp_executesql N'THROW 50000,@_errorMSG,1',N'@_errorMSG VARCHAR(200)', @_errorMSG;
+					ELSE
+						EXEC sp_executesql N'RAISERROR (@_errorMSG, 16, 1)', N'@_errorMSG VARCHAR(200)', @_errorMSG;
+				END
 
-			--	if @newVolume value provided is like 'F:\Data\' where as the drive/volume is 'F:\' only	
-			IF NOT EXISTS (SELECT * FROM @mountPointVolumes v WHERE v.Volume = @newVolume)
-			BEGIN
-				-- Save the new volume path provided by user. This will be used in ALTER DATABASE ADD FILE script
-				SET @_newVolume = @newVolume;
+				IF @verbose=1 
+					PRINT	'	Executing code to find Data/Log Mount Point Volumes';
+				;WITH t_RawData AS
+				(
+					SELECT	ID = 1, 
+							line, 
+							expression = left(line,CHARINDEX('|',line)-1), 
+							searchExpression = SUBSTRING ( line , CHARINDEX('|',line)+1, LEN(line)+1 ), 
+							delimitorPosition = CHARINDEX('|',SUBSTRING ( line , CHARINDEX('|',line)+1, LEN(line)+1 ))
+
+
+
+					FROM	@output
+					WHERE	line like '[A-Z][:]%'
+							--line like 'C:\%'
+					-- 
+					UNION all
+					--
+					SELECT	ID = ID + 1, 
+							line, 
+							expression = CASE WHEN delimitorPosition = 0 THEN searchExpression ELSE left(searchExpression,delimitorPosition-1) END, 
+							searchExpression = CASE WHEN delimitorPosition = 0 THEN NULL ELSE SUBSTRING(searchExpression,delimitorPosition+1,len(searchExpression)+1) END, 
+							delimitorPosition = CASE WHEN delimitorPosition = 0 THEN -1 ELSE CHARINDEX('|',SUBSTRING(searchExpression,delimitorPosition+1,len(searchExpression)+1)) END
+					FROM	t_RawData
+					WHERE	delimitorPosition >= 0
+				)
+				,T_Volumes AS 
+				(
+					SELECT	line, [Volume],[Label], [capacity(MB)],[freespace(MB)]
+					FROM (
+							SELECT	line, 
+									[Column] =	CASE	ID
+														WHEN 1
+														THEN 'Volume'
+														WHEN 2
+														THEN 'Label'
+														WHEN 3
+														THEN 'capacity(MB)'
+														WHEN 4
+														THEN 'freespace(MB)'
+														ELSE NULL
+														END,
+									[Value] = expression
+							FROM	t_RawData
+							) as up
+					PIVOT (MAX([Value]) FOR [Column] IN ([Volume],[Label], [capacity(MB)],[freespace(MB)])) as pvt
+					--ORDER BY LINE
+				)
+				INSERT INTO @mountPointVolumes
+				(Volume, [Label], [capacity(MB)], [freespace(MB)] ,VolumeName, [capacity(GB)], [freespace(GB)], [freespace(%)])
+				SELECT	Volume
+						,[Label]
+						,[capacity(MB)] = CAST([capacity(MB)] AS numeric(20,2))
+						,[freespace(MB)] = CAST([freespace(MB)] AS numeric(20,2)) 
+
+
+						,[Label] as VolumeName
+						,CAST((CAST([capacity(MB)] AS numeric(20,2))/1024.0) AS DECIMAL(20,2)) AS [capacity(GB)]
+						,CAST((CAST([freespace(MB)] AS numeric(20,2))/1024.0) AS DECIMAL(20,2)) AS [freespace(GB)]
+						,CAST((CAST([freespace(MB)] AS numeric(20,2))*100.0)/[capacity(MB)] AS DECIMAL(20,2)) AS [freespace(%)]
+				FROM	T_Volumes v
+				WHERE	v.Volume LIKE '[A-Z]:\Data\'
+					OR	v.Volume LIKE '[A-Z]:\Data[0-9]\'
+					OR	v.Volume LIKE '[A-Z]:\Data[0-9][0-9]\'
+					OR	v.Volume LIKE '[A-Z]:\Logs\'
+					OR	v.Volume LIKE '[A-Z]:\Logs[0-9]\'
+					OR	v.Volume LIKE '[A-Z]:\Logs[0-9][0-9]\'
+					OR	v.Volume LIKE '[A-Z]:\tempdb\'
+					OR	v.Volume LIKE '[A-Z]:\tempdb[0-9]\'
+					OR	v.Volume LIKE '[A-Z]:\tempdb[0-9][0-9]\'
+					OR	EXISTS (SELECT * FROM sys.master_files as mf WHERE mf.physical_name LIKE (Volume+'%'))
+					OR	(@volumeInfo = 1)
+					OR	@newVolume IS NOT NULL;
+
+				IF @verbose=1
+				BEGIN
+					PRINT	'	Values populated for @mountPointVolumes';
+					PRINT	'	SELECT * FROM @mountPointVolumes;'
+					SELECT 'SELECT * FROM @mountPointVolumes;' AS RunningQuery,* FROM @mountPointVolumes;
+				END
+
+				--	Check if some volume exists in @mountPointVolumes
+				IF NOT EXISTS (SELECT * FROM @mountPointVolumes v ) 
+				BEGIN
+					SET @_errorMSG = 'Volume configuration is not per standard. Kindly perform the activity manually.';
+			
+					IF (select CAST(LEFT(CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)),charindex('.',CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)))-1) AS INT)) >= 12
+						EXEC sp_executesql N'THROW 50000,@_errorMSG,1',N'@_errorMSG VARCHAR(200)', @_errorMSG;
+					ELSE
+						EXEC sp_executesql N'RAISERROR (@_errorMSG, 16, 1)', N'@_errorMSG VARCHAR(200)', @_errorMSG;
+				END
+
+				--	if @newVolume value provided is like 'F:\Data\' where as the drive/volume is 'F:\' only	
+				IF NOT EXISTS (SELECT * FROM @mountPointVolumes v WHERE v.Volume = @newVolume)
+				BEGIN
+					-- Save the new volume path provided by user. This will be used in ALTER DATABASE ADD FILE script
+					SET @_newVolume = @newVolume;
 				
-				-- Re-set @newVolume with actual volume means 'F:\' drive in above case
-				SELECT	@newVolume = v2.Volume
-				FROM  (	SELECT MAX(LEN(v.Volume)) AS Max_Volume_Length FROM @mountPointVolumes as v WHERE @_newVolume LIKE (v.Volume+'%') ) as v1
-				INNER JOIN
-						(	SELECT v.Volume FROM @mountPointVolumes as v WHERE @_newVolume LIKE (v.Volume+'%') ) as v2
-					ON	LEN(v2.Volume) = v1.Max_Volume_Length
-			END
-			ELSE
-			BEGIN
-				SET @_newVolume = @newVolume;
-			END
+					-- Re-set @newVolume with actual volume means 'F:\' drive in above case
+					SELECT	@newVolume = v2.Volume
+					FROM  (	SELECT MAX(LEN(v.Volume)) AS Max_Volume_Length FROM @mountPointVolumes as v WHERE @_newVolume LIKE (v.Volume+'%') ) as v1
+					INNER JOIN
+							(	SELECT v.Volume FROM @mountPointVolumes as v WHERE @_newVolume LIKE (v.Volume+'%') ) as v2
+						ON	LEN(v2.Volume) = v1.Max_Volume_Length
+				END
+				ELSE
+				BEGIN
+					SET @_newVolume = @newVolume;
+				END
 
-			--	Perform free space Validation based on table @mountPointVolumes
-			IF NOT EXISTS (SELECT * FROM @mountPointVolumes v WHERE v.Volume = @newVolume AND v.[freespace(%)] >= 20) AND (@addDataFiles=1 OR @addLogFiles=1) 
-			BEGIN
-				IF NOT EXISTS (SELECT * FROM @mountPointVolumes v WHERE @newVolume LIKE (v.Volume+'%'))
-					SET @_errorMSG = 'Kindly specify correct value for @newVolume as provided mount point volume '+QUOTENAME(@newVolume,'''')+' does not exist';
-				ELSE
-					SET @_errorMSG = 'Available free space on @newVolume='+QUOTENAME(@newVolume,'''')+' is less than 20 percent.';
+				--	Perform free space Validation based on table @mountPointVolumes
+				IF NOT EXISTS (SELECT * FROM @mountPointVolumes v WHERE v.Volume = @newVolume AND v.[freespace(%)] >= 20) AND (@addDataFiles=1 OR @addLogFiles=1) 
+				BEGIN
+					IF NOT EXISTS (SELECT * FROM @mountPointVolumes v WHERE @newVolume LIKE (v.Volume+'%'))
+						SET @_errorMSG = 'Kindly specify correct value for @newVolume as provided mount point volume '+QUOTENAME(@newVolume,'''')+' does not exist';
+					ELSE
+						SET @_errorMSG = 'Available free space on @newVolume='+QUOTENAME(@newVolume,'''')+' is less than 20 percent.';
 			
-				IF (select CAST(LEFT(CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)),charindex('.',CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)))-1) AS INT)) >= 12
-					EXEC sp_executesql N'THROW 50000,@_errorMSG,1',N'@_errorMSG VARCHAR(200)', @_errorMSG;
-				ELSE
-					EXEC sp_executesql N'RAISERROR (@_errorMSG, 16, 1)', N'@_errorMSG VARCHAR(200)', @_errorMSG;
-			END
+					IF (select CAST(LEFT(CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)),charindex('.',CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)))-1) AS INT)) >= 12
+						EXEC sp_executesql N'THROW 50000,@_errorMSG,1',N'@_errorMSG VARCHAR(200)', @_errorMSG;
+					ELSE
+						EXEC sp_executesql N'RAISERROR (@_errorMSG, 16, 1)', N'@_errorMSG VARCHAR(200)', @_errorMSG;
+				END
+			END -- End block for @optimizeLogFiles = 1
 
 			--	Running jobs
 			/*
@@ -954,7 +975,7 @@ BEGIN
 			END
 			*/
 
-			IF @getLogInfo <> 1 AND @addLogFiles <> 1 AND @expandTempDBSize <> 1
+			IF @getLogInfo <> 1 AND @addLogFiles <> 1 AND @expandTempDBSize <> 1 AND @optimizeLogFiles <> 1
 			BEGIN
 				IF @verbose=1 
 					PRINT	'	Populate values into @filegroups temp table';
@@ -972,7 +993,7 @@ BEGIN
 			END
 
 			--	Begin code to find out complete data/log file usage details
-			IF (@addDataFiles=1 OR @addLogFiles=1 OR @unrestrictFileGrowth=1 OR @optimizeLogFiles=1 OR @getInfo=1 )
+			IF (@addDataFiles=1 OR @addLogFiles=1 OR @unrestrictFileGrowth=1 OR @getInfo=1 )
 			BEGIN
 				IF @verbose = 1
 					PRINT	'	Populating data into @DBFiles.';
@@ -1002,7 +1023,7 @@ BEGIN
 				END
 			END
 
-			IF ( @getInfo <> 1 AND @getLogInfo <> 1) -- Don't execute common codes for @getInfo functionality
+			IF ( @getInfo <> 1 AND @getLogInfo <> 1 AND @optimizeLogFiles <> 1) -- Don't execute common codes for @getInfo functionality
 			BEGIN	-- Begin Block: Don't execute common codes for @getInfo functionality
 				--	Get Database size details
 				IF @verbose = 1
@@ -1419,8 +1440,11 @@ BEGIN
 				FROM	#T_Files_Derived AS f
 				WHERE	f.database_id NOT IN (SELECT m.database_id FROM	sys.database_mirroring m WHERE m.mirroring_state IS NOT NULL AND m.mirroring_role_desc = 'MIRROR')
 					AND	f.database_id NOT IN (	SELECT d.database_id FROM @T_DatabasesNotAccessible as d)
-					AND (	NOT EXISTS (SELECT * FROM @filterDatabaseNames)
-						OR	f.database_id IN (SELECT DB_ID(d.DBName) FROM @filterDatabaseNames AS d)
+					AND (	NOT EXISTS (SELECT * FROM @filterDatabaseNames as d WHERE d.Category = 'IN')
+						OR	f.database_id IN (SELECT DB_ID(d.DBName) FROM @filterDatabaseNames AS d WHERE d.Category = 'IN')
+						)
+					AND (	NOT EXISTS (SELECT * FROM @filterDatabaseNames as d WHERE d.Category = 'NOT IN')
+						OR	f.database_id NOT IN (SELECT DB_ID(d._DBName) FROM @filterDatabaseNames AS d WHERE d.Category = 'NOT IN')
 						);
 		
 				IF (@_LogOrData='Log')
@@ -1910,7 +1934,7 @@ BEGIN
 						FROM  (	SELECT 'Files Data where PipeCounts <> 7' AS RunningQuery ) Q
 						LEFT OUTER JOIN
 							  (SELECT * FROM @output AS o WHERE line IS NOT NULL AND PipeCounts <> 7 ) AS o
-						ON		1 = 1;
+						ON		1 = 1;;
 					END
 				END
 			END
@@ -2519,6 +2543,465 @@ BEGIN
 			--	End:	@getLogInfo = 1
 		--	============================================================================
 
+		--	============================================================================
+		--	Begin:	@optimizeLogFiles = 1
+		--	----------------------------------------------------------------------------
+		IF	@optimizeLogFiles = 1
+		BEGIN
+			IF @verbose=1 
+				PRINT	'
+/*	******************** Begin:	@optimizeLogFiles = 1 *****************************/';
+			
+			IF CAST(LEFT(@_productVersion,CHARINDEX('.',@_productVersion)-1) AS INT) >= 12
+			BEGIN
+				PRINT 'You are running on SQL Server 2014 and later. So there is no need of Optimizing Log Files.
+https://www.sqlskills.com/blogs/paul/important-change-vlf-creation-algorithm-sql-server-2014/
+';
+			END
+			ELSE
+			BEGIN -- Else Block for @_productVersion Check
+				IF @_productVersion LIKE '10.%' OR @_productVersion LIKE '9.%'
+					ALTER TABLE #stage DROP COLUMN [RecoveryUnitId];
+
+				INSERT @Databases -- Eliminate non-accessible DBs
+				SELECT name FROM sys.databases d 
+				WHERE DATABASEPROPERTYEX(name, 'Status') = 'ONLINE'
+				AND (	NOT EXISTS (SELECT * FROM @filterDatabaseNames as f WHERE f.Category = 'IN')
+						OR	d.database_id IN (SELECT DB_ID(f.DBName) FROM @filterDatabaseNames AS f WHERE f.Category = 'IN')
+					)
+				AND (	NOT EXISTS (SELECT * FROM @filterDatabaseNames as f WHERE f.Category = 'NOT IN')
+						OR	d.database_id NOT IN (SELECT DB_ID(f._DBName) FROM @filterDatabaseNames AS f WHERE f.Category = 'NOT IN')
+					);
+
+				IF	@verbose = 1
+				BEGIN
+					PRINT	'	SELECT * FROM @Databases;';
+					SELECT 'SELECT * FROM @Databases;' AS RunningQuery, * FROM @Databases;
+				END
+				
+	
+				SET	@_loopCounter = 1;
+				SET	@_loopCounts = (SELECT COUNT(*) FROM @Databases);
+
+				IF @verbose=1 
+					PRINT	'	Start Loop, and find VLFs for each log file of every db';
+				WHILE (@_loopCounter <= @_loopCounts)
+				BEGIN
+					--	Truncate temp table
+					TRUNCATE TABLE #stage;
+					SET @_dbName = NULL;
+					SELECT @_dbName = DBName FROM @Databases WHERE ID = @_loopCounter ;
+					SET @_loopSQLText = 'DBCC LOGINFO ('+QUOTENAME(@_dbName)+')
+			WITH  NO_INFOMSGS;';
+				
+					INSERT #stage
+					EXEC (@_loopSQLText);
+
+					INSERT #LogInfoByFile
+					SELECT	@_dbName AS DBName,
+							file_id as FileId,
+							COUNT(*) AS VLFCount
+					FROM	#stage
+					GROUP BY [file_id];
+
+					SET @_loopCounter = @_loopCounter + 1;
+				END
+			
+				IF	@verbose = 1
+				BEGIN
+					PRINT	'	Finished finding VLFs for each log file of every db
+			SELECT * FROM #LogInfoByFile;';
+					SELECT 'SELECT * FROM #LogInfoByFile;' AS RunningQuery, * FROM #LogInfoByFile;
+				END
+
+				IF	@verbose = 1
+					PRINT	'	Creating table #LogFiles.';
+
+				IF OBJECT_ID('tempdb..#LogFilesVLF') IS NOT NULL
+					DROP TABLE #LogFilesVLF;
+				;WITH T_Files_Size AS
+				(
+					SELECT mf.database_id, CONVERT(DECIMAL(20,2),((SUM(size)*8.0)/1024/1024)) AS [TotalFilesSize(GB)] FROM sys.master_files AS mf WHERE mf.type_desc = 'LOG' GROUP BY mf.database_id
+				)
+				,T_Files_Filegroups AS
+				(
+					SELECT	mf.database_id as [DB_ID], DB_NAME(mf.database_id) AS [DB_Name], CASE WHEN d.is_read_only = 1 THEN 'Read_Only' ELSE DATABASEPROPERTYEX(DB_NAME(mf.database_id), 'Status') END as DB_State
+							,[TotalFilesSize(GB)]
+							,(CASE	WHEN 	growth = 0 
+									THEN 	'0' 
+									WHEN 	is_percent_growth = 1 
+									THEN 	CAST(growth AS VARCHAR(5))+'%' 
+									ELSE 	CAST(CONVERT( DECIMAL(20,2),((mf.growth*8.0)/1024.0)) AS VARCHAR(20))+' mb'
+							END) AS [growth(GB)]
+							,(CASE	WHEN 	(size *8.0)/1024/1024/1024 >= 5.0 -- (page counts * 8) {KB}/1024 {MB}/1024 {GB}
+									THEN 	CAST(CAST((size *8.0)/1024/1024/1024 AS numeric(20,2)) AS VARCHAR(20))+' tb'
+									WHEN 	(size *8.0)/1024/1024 >= 1.0 -- (page counts * 8) {KB}/1024 {MB}/1024 {GB}
+									THEN 	CAST(CAST((size *8.0)/1024/1024 AS numeric(20,2)) AS VARCHAR(20))+' gb'
+									ELSE 	CAST(CAST((size *8.0)/1024 AS numeric(20,2)) AS VARCHAR(20))+' mb'
+							END) AS [size(GB)]
+							,mf.name as [FileName] 
+							,v.Volume  as [Volume]
+							,mf.* 
+							,d.recovery_model_desc
+					FROM	sys.master_files AS mf
+					INNER JOIN
+							sys.databases as d
+					ON		d.database_id = mf.database_id
+					LEFT JOIN
+							T_Files_Size AS l
+						ON	l.database_id = mf.database_id
+					OUTER APPLY
+							(	SELECT	v2.Volume
+								FROM  (	SELECT MAX(LEN(v.Volume)) AS Max_Volume_Length FROM @mountPointVolumes as v WHERE mf.physical_name LIKE (v.Volume+'%') ) as v1
+								INNER JOIN
+									  (	SELECT v.Volume FROM @mountPointVolumes as v WHERE mf.physical_name LIKE (v.Volume+'%') ) as v2
+									ON	LEN(v2.Volume) = v1.Max_Volume_Length
+							) as v
+					--OUTER APPLY
+					--	(	SELECT v.Volume FROM @mountPointVolumes AS v WHERE mf.physical_name LIKE (v.Volume+'%')	) AS v
+					WHERE	mf.type_desc = 'LOG'
+				)
+				SELECT	*
+						,_threshold_mb = (CASE WHEN ((size*8.0)/1024/1024) <= 1 THEN CAST(NULL AS INT) WHEN ((size*8.0)/1024/1024) <= 10 THEN 1024 WHEN ((size*8.0)/1024/1024) <= 65 THEN 66560 END)
+						,_autogrowth_gb = (CASE WHEN ((size*8.0)/1024/1024) <= 10 THEN 1 WHEN ((size*8.0)/1024/1024) <= 65 THEN 2 ELSE 8 END)
+				INTO	#LogFilesVLF
+				FROM	T_Files_Filegroups as d
+				WHERE	(	NOT EXISTS (SELECT * FROM @filterDatabaseNames as f WHERE f.Category = 'IN')
+						OR	d.database_id IN (SELECT DB_ID(f.DBName) FROM @filterDatabaseNames AS f WHERE f.Category = 'IN')
+						)
+					AND (	NOT EXISTS (SELECT * FROM @filterDatabaseNames as f WHERE f.Category = 'NOT IN')
+							OR	d.database_id NOT IN (SELECT DB_ID(f._DBName) FROM @filterDatabaseNames AS f WHERE f.Category = 'NOT IN')
+						);
+
+				IF	@verbose = 1
+				BEGIN
+					PRINT	'	SELECT * FROM #LogFilesVLF;';
+					SELECT 'SELECT * FROM #LogFilesVLF;' AS RunningQuery, * FROM #LogFilesVLF ORDER BY DB_Name;
+				END
+			
+				--	Process each log file using Cursor
+				IF @verbose = 1
+					PRINT 'Declaring Cursor to iterate through databases that require VLF Optimization';
+				DECLARE @c_DBName VARCHAR(255)
+						,@c_FileName VARCHAR(255)
+						,@c_VLFCount INT
+						,@c_Size_mb INT
+						,@c_recovery_model_desc VARCHAR(20)
+						,@c_threshold_mb INT
+						,@c_new_autogrowth INT;
+
+				DECLARE cursor_logFile CURSOR LOCAL STATIC FORWARD_ONLY READ_ONLY FOR
+					SELECT	[DB_Name], FileName, vi.VLFCount, ((size*8)/1024) as Size_mb, recovery_model_desc, _autogrowth_gb, _threshold_mb
+					FROM	#LogFilesVLF as f
+					JOIN	#LogInfoByFile as vi
+						ON	vi.DBName = f.[DB_Name]
+						AND	vi.FileId = f.[file_id]
+					WHERE f.[DB_Name] IN (SELECT i.DBName FROM #LogInfoByFile i GROUP BY i.DBName HAVING SUM(i.VLFCount) >= @vlfCountThreshold )
+					AND vi.VLFCount >= ((((f.size*8.0)/1024)/8000)*16);
+
+				OPEN cursor_logFile;
+				FETCH NEXT FROM cursor_logFile INTO @c_DBName, @c_FileName, @c_VLFCount, @c_Size_mb, @c_recovery_model_desc, @c_new_autogrowth, @c_threshold_mb;
+
+				WHILE @@FETCH_STATUS = 0
+				BEGIN -- Cursor block
+					SET @_loopSQLText_BackupLog = '';
+					SET @_loopSQLText_DbccShrinkFile = '';
+					SET @_loopSQLText_AlterDbModifySize = '';
+					SET @_loopSQLText_AlterDbAutoGrowth = '';
+					SET @_loopSQLText = '
+/*	******************************************************************************************************
+TSQL Code to remove high VLF Count for ['+@c_DBName+'] database. 
+		Currently the log file '''+@c_FileName+''' has '+cast(@c_VLFCount as varchar(20))+' VLFs which is more than @vlfCountThreshold ('+cast(@vlfCountThreshold as varchar(20))+')
+		Shrinking the log file '''+@c_FileName+''' to minimum possible size, and
+		Trying to re-grow it to actual size of '+cast(@c_Size_mb as varchar(20))+' MB in chunks of '+cast(@c_new_autogrowth as varchar(10))+'GB
+		--	https://dba.stackexchange.com/a/180150/98923
+		--	https://sqlperformance.com/2013/02/system-configuration/transaction-log-configuration
+*	******************************************************************************************************/
+	';
+				
+					IF @c_recovery_model_desc <> 'SIMPLE' AND @generateLogBackup = 1
+					BEGIN
+						SET @_loopSQLText_BackupLog += '
+-- Step 1: backup of the transaction log
+USE [master];
+BACKUP LOG ['+@c_DBName+'] TO  DISK = N''F:\SQLBackups\'+@c_DBName+'.trn'' WITH NOFORMAT, INIT, NAME = N''Transaction Log Backup during SpaceCapacityAutomation @OptimizeLogFiles'', SKIP, NOREWIND, NOUNLOAD, COMPRESSION, STATS = 3;
+'				END
+					ELSE
+					BEGIN
+						SET @_loopSQLText_BackupLog += '
+-- Step 1: backup of the transaction log. 
+	-- No action required as either database is in SIMPLE RECOVERY model
+	-- Or, @generateLogBackup is set to 0
+
+';
+					END
+				
+					IF @verbose = 1
+						PRINT 'Setting @_loopSQLText_DbccShrinkFile variable';
+					SET @_loopSQLText_DbccShrinkFile = (CASE WHEN @forceExecute = 0 THEN '-- Step 2: Shrink the log file
+' ELSE '' END) + (CASE WHEN @forceExecute = 0 THEN 'USE ['+@c_DBName+']; ' ELSE '' END)+ 'DBCC SHRINKFILE (N'''+@c_FileName+''' , 0, TRUNCATEONLY);'
+				
+
+					IF @forceExecute = 0
+					BEGIN
+						SET @_loopSQLText = @_loopSQLText + @_loopSQLText_BackupLog + @_loopSQLText_DbccShrinkFile; --+ @_loopSQLText_AlterDbModifySize + @_loopSQLText_AlterDbAutoGrowth;
+						IF @verbose = 1
+							PRINT '@_loopSQLText = ';
+						PRINT @_loopSQLText+'
+GO
+';
+					END
+					ELSE
+					BEGIN -- Execute SHRINKFILE
+						BEGIN TRY
+							IF @_loopSQLText_BackupLog IS NOT NULL AND LEN(@_loopSQLText_BackupLog) > 0
+							BEGIN
+								IF @verbose = 1
+								BEGIN
+									PRINT 'Proceeding to Execute Backup Transaction Log';
+									PRINT '@_loopSQLText_BackupLog = '+CHAR(10)+CHAR(13)+@_loopSQLText_BackupLog;
+								END
+
+								EXEC (@_loopSQLText_BackupLog);
+							END							
+
+							IF @_loopSQLText_DbccShrinkFile IS NOT NULL AND LEN(@_loopSQLText_DbccShrinkFile) > 0
+							BEGIN -- block for DbccShrinkFile
+								DELETE FROM @T_DbccShrinkFile_Raw;
+								DELETE FROM @T_DbccShrinkFile;
+								TRUNCATE TABLE #T_DbccShrinkFile_LineSplit;
+
+								IF @verbose = 1
+								BEGIN
+									PRINT 'Proceeding to perform Shrink Operation';
+									PRINT @_loopSQLText_DbccShrinkFile;
+								END								
+
+								SET    @_sqlcmdCommand = 'sqlcmd -S "'+@@servername+'" -d "'+@c_DBName+'" -Q "'+@_loopSQLText_DbccShrinkFile+'"';
+								IF @verbose = 1
+									PRINT '@_sqlcmdCommand = '+CHAR(10)+CHAR(13)+@_sqlcmdCommand;
+
+								INSERT @T_DbccShrinkFile_Raw
+								EXEC   master..xp_cmdshell @_sqlcmdCommand;
+
+								IF @verbose = 1
+								BEGIN
+									SELECT	Q.RunningQuery, o.*
+									FROM  (	SELECT 'select * from @T_DbccShrinkFile_Raw WHERE ID <= 4' AS RunningQuery ) Q
+									LEFT OUTER JOIN
+										  (SELECT * FROM @T_DbccShrinkFile_Raw WHERE ID <= 4 ) AS o
+									ON		1 = 1;
+								END				
+
+								/*
+									Sometimes we may get error in 1st row of above table variable
+									Cannot shrink log file 2 (EntryAggregation_log) because the logical log file located at the end of the file is in use.
+								*/
+								SELECT	@_DbccShrinkFile_RawText = output
+								FROM	@T_DbccShrinkFile_Raw
+								WHERE	ID = 2 + (SELECT i.ID FROM @T_DbccShrinkFile_Raw as i WHERE i.output like 'DbId%');
+
+								Set @_DbccShrinkFile_RawText+='X'
+
+								;WITH T_DbccShrinkFile_LineSplit AS 
+								(
+									SELECT	1 AS i,
+											Substring(@_DbccShrinkFile_RawText,Patindex(@_num,@_DbccShrinkFile_RawText),patindex(@_oth,Substring(@_DbccShrinkFile_RawText,Patindex(@_num,@_DbccShrinkFile_RawText),4000))-1) AS num, 
+											substring(@_DbccShrinkFile_RawText,Patindex(@_num,@_DbccShrinkFile_RawText)+patindex(@_oth,Substring(@_DbccShrinkFile_RawText,Patindex(@_num,@_DbccShrinkFile_RawText),4000))-1,4000) AS txt
+									--
+									UNION ALL
+									--
+									SELECT	i+1,
+											Substring(txt,Patindex(@_num,txt),patindex(@_oth,Substring(txt,Patindex(@_num,txt),4000))-1), 
+											substring(txt,Patindex(@_num,txt)+patindex(@_oth,Substring(txt,Patindex(@_num,txt),4000))-1,4000)
+									FROM	T_DbccShrinkFile_LineSplit
+									WHERE	txt like '%[0-9]%'
+								)
+								INSERT #T_DbccShrinkFile_LineSplit
+								SELECT	IND=i, NUM=CAST( num  AS INT)
+								--INTO	#T_DbccShrinkFile_LineSplit
+								FROM	T_DbccShrinkFile_LineSplit
+								WHERE	num like '%[0-9]%';
+
+								INSERT INTO @T_DbccShrinkFile
+								([DBID],FileID,CurrentSize, MinimumSize,UsedPages,EstimatedPages)
+								SELECT	*
+								FROM (
+										SELECT IND,NUM
+										FROM #T_DbccShrinkFile_LineSplit
+									 ) AS Base
+								PIVOT (
+										SUM(NUM)
+										FOR IND IN ([1], [2], [3],[4], [5], [6])
+									 ) PIV;
+
+								IF @verbose = 1
+								BEGIN
+									
+									SELECT	Q.RunningQuery, o.*
+									FROM  (	SELECT 'select * from @T_DbccShrinkFile' AS RunningQuery ) Q
+									LEFT OUTER JOIN
+										  (SELECT * FROM @T_DbccShrinkFile) AS o
+									ON		1 = 1;
+								END
+
+								--	https://docs.microsoft.com/en-us/sql/t-sql/database-console-commands/dbcc-shrinkfile-transact-sql?view=sql-server-2017#troubleshooting
+								SELECT @_spaceReleasedBySHRINKFILE_MB = ((f.size - o.CurrentSize)*8.0/1024)
+								FROM #LogFilesVLF as f INNER JOIN @T_DbccShrinkFile AS o 
+								ON o.DBID = f.[DB_ID] AND o.FileID = f.[file_id];
+
+								SET @_errorMSG = 'Space released by DBCC SHRINKFILE operation on '''+@c_FileName+''' of database ['+@c_DBName+'] = '+CAST(@_spaceReleasedBySHRINKFILE_MB AS VARCHAR(20))+' MB ('+CAST(((@_spaceReleasedBySHRINKFILE_MB*100)/@c_Size_mb) AS VARCHAR(20))+'%) 
+Incase more space release is expected, then kindly execute below query to troubleshoot:-
+select d.name, d.recovery_model_desc, d.log_reuse_wait_desc from sys.databases d where d.name = '''+@c_DBName+''';
+';
+								IF @verbose = 1
+									PRINT @_errorMSG;
+							END -- block for DbccShrinkFile
+						END TRY
+						BEGIN CATCH
+							IF @_errorOccurred = 0
+								SET @_errorOccurred = 1;
+
+							--	Make a FAIL entry for Sending message to end user
+							INSERT @OutputMessages
+								(Status, Category, DBName, FileGroup, FileName, MessageDetails, TSQLCode)
+							SELECT	'Fail' AS Status
+									,'@optimizeLogFiles - Remove High VLF' AS Category
+									,@c_DBName AS  DBName
+									,NULL AS [FileGroup]
+									,@c_FileName AS [FileName]
+									,ERROR_MESSAGE() AS MessageDetails
+									,@_loopSQLText AS TSQLCode;
+						END CATCH
+					END -- Execute SHRINKFILE
+					
+					-- No SHRINKFILE operation completed successfully
+					IF @_errorOccurred = 0
+					BEGIN -- Block for Incrementing File Size & Setting AutoGrowth
+						IF @verbose = 1
+							PRINT 'Logic Block for Incrementing File Size & Setting AutoGrowth..';
+
+						IF @verbose = 1
+							PRINT 'Setting @_DbSizeAfterShrink_MB ';
+						IF @forceExecute = 1
+						BEGIN
+							SELECT @_DbSizeAfterShrink_MB = ((CurrentSize*8.0)/1024) FROM @T_DbccShrinkFile;
+						END
+						ELSE
+							SET @_DbSizeAfterShrink_MB = 0;
+
+						IF @verbose = 1
+							PRINT '@_DbSizeAfterShrink_MB = '+CAST(@_DbSizeAfterShrink_MB as varchar(20));
+						
+						IF @verbose = 1
+							PRINT 'Check if log file size <= 1024';
+						IF @c_Size_mb <= 1024 -- <= 1 gb
+						BEGIN
+							IF @verbose = 1
+								PRINT 'Proceeding  for logic when log file size <= 1024';
+
+							SET @_loopSQLText_AlterDbModifySize = '
+
+-- Step 3: Grow the log file back to the desired size
+	-- and the FILEGROWTH to '+cast(@c_new_autogrowth as varchar(10))+'gb
+USE [master];
+ALTER DATABASE ['+@c_DBName+'] MODIFY FILE (NAME = N'''+@c_FileName+''', SIZE = '+cast(@c_new_autogrowth as varchar(10))+'GB, FILEGROWTH = '+cast(@c_new_autogrowth as varchar(10))+'GB);
+'
+						END
+						ELSE
+						BEGIN
+							IF @verbose = 1
+								PRINT 'Proceeding  for logic when log file size > 1024 (larger log files)';
+							
+							SELECT @_loopCounter=1, @_loopCounts=CEILING(( (@c_Size_mb-@_DbSizeAfterShrink_MB)/1024.0)/(1.0*@c_new_autogrowth));
+							IF @verbose = 1
+								PRINT '@_loopCounts = '+CAST(@_loopCounts as varchar(20))+CHAR(10)+'@c_new_autogrowth = '+CAST(@c_new_autogrowth AS VARCHAR(20));
+
+							SET @_loopSQLText_AlterDbModifySize = '
+-- Step 3: Grow the log file back to the desired size ('+cast(@c_Size_mb as varchar(20))+') from size '+CAST(@_DbSizeAfterShrink_MB/1024 AS VARCHAR(20))+' GB, 
+	-- and with FILEGROWTH of '+cast(@c_new_autogrowth as varchar(10))+'gb
+	-- In case of manual execution, please commentout MODIFY statements where SIZE mentioned is less than CurrentSize from output of DBCC SHRINKFILE
+USE [master];'
+							WHILE @_loopCounter < @_loopCounts
+							BEGIN	-- Begin Block of Loop
+								SET @_loopSQLText_AlterDbModifySize += '
+ALTER DATABASE ['+@c_DBName+'] MODIFY FILE (NAME = N'''+@c_FileName+''''+(CASE WHEN @_loopCounter <> @_loopCounts THEN ', SIZE = '+CAST(FLOOR(@_DbSizeAfterShrink_MB/1024)+(@c_new_autogrowth*@_loopCounter) AS VARCHAR(20))+'GB' ELSE '' END)+');'
+								SET @_loopCounter = @_loopCounter + 1;
+							END		-- End Block of Loop 
+
+							SET @_loopSQLText_AlterDbAutoGrowth += (CASE WHEN @forceExecute = 0 THEN 'GO
+
+' ELSE '' END) + 'USE [master];
+ALTER DATABASE ['+@c_DBName+'] MODIFY FILE (NAME = N'''+@c_FileName+''' , FILEGROWTH = '+CAST(@c_new_autogrowth AS VARCHAR(20))+'GB);
+'+(CASE WHEN @forceExecute = 0 THEN 'GO'+CHAR(10) ELSE '' END);
+						END	
+						
+						IF @forceExecute = 1
+						BEGIN
+							IF @verbose = 1
+							BEGIN
+								IF @_loopCounts <> 0
+								BEGIN
+									PRINT '@_loopSQLText_AlterDbModifySize = '+CHAR(10)+CHAR(13);
+									PRINT @_loopSQLText_AlterDbModifySize;
+								END
+								ELSE
+									PRINT 'Log file could not be shrinked. So nothing to Grow back'
+							END
+							
+							IF @verbose = 1
+								PRINT 'Proceeding to re-grow the Log file ['+@c_FileName+']';
+							EXEC(@_loopSQLText_AlterDbModifySize);
+
+							IF @verbose = 1
+							BEGIN
+								PRINT '@_loopSQLText_AlterDbAutoGrowth = '+CHAR(10)+CHAR(13);
+								PRINT @_loopSQLText_AlterDbAutoGrowth;
+							END
+
+							IF @verbose = 1
+								PRINT 'Proceeding to set autogrowth for Log file ['+@c_FileName+']';
+							EXEC(@_loopSQLText_AlterDbAutoGrowth);
+						END
+						ELSE
+						BEGIN
+							IF @verbose = 1
+								PRINT '@_loopSQLText_AlterDbModifySize = '+CHAR(10)+CHAR(13);
+							PRINT @_loopSQLText_AlterDbModifySize;
+
+							IF @verbose = 1
+								PRINT '@_loopSQLText_AlterDbAutoGrowth = '+CHAR(10)+CHAR(13);
+							PRINT @_loopSQLText_AlterDbAutoGrowth;
+						END	
+
+						--	Make a SUCCESS entry for Sending message to end user
+						INSERT @OutputMessages
+							(Status, Category, DBName, FileGroup, FileName, MessageDetails, TSQLCode)
+						SELECT	'Success' AS Status
+								,'@optimizeLogFiles - Remove High VLF' AS Category
+								,@c_DBName AS  DBName
+								,NULL AS [FileGroup]
+								,@c_FileName AS [FileName]
+								,'Log File successfully optimized according to ideal VLF counts.' AS MessageDetails
+								,@_loopSQLText + @_loopSQLText_BackupLog + @_loopSQLText_DbccShrinkFile + @_loopSQLText_AlterDbModifySize AS TSQLCode;
+
+					END -- Block for Incrementing File Size & Setting AutoGrowth
+
+					FETCH NEXT FROM cursor_logFile INTO @c_DBName, @c_FileName, @c_VLFCount, @c_Size_mb, @c_recovery_model_desc, @c_new_autogrowth, @c_threshold_mb;
+				END  -- Cursor block
+
+				CLOSE cursor_logFile;
+				DEALLOCATE cursor_logFile;
+	
+				IF @verbose=1 
+					PRINT	'/*	******************** End:	@optimizeLogFiles = 1 *****************************/
+';
+			END -- Else Block for @_productVersion Check
+		END
+	--	----------------------------------------------------------------------------
+		--	End:	@getLogInfo = 1
+	--	============================================================================
+
 	--	============================================================================
 		--	Begin:	@help = 1
 	--	----------------------------------------------------------------------------
@@ -2530,117 +3013,125 @@ BEGIN
 /*	******************** Begin:	@help = 1 *****************************/';
 
 		-- VALUES constructor method does not work in SQL 2005. So using UNION ALL
-		SELECT	[Parameter Name], [Data Type], [Default Value], [Parameter Description]
-		FROM	(SELECT	'!~~~ Version ~~~~!' as [Parameter Name],'Information' as [Data Type],'3.6.3' as [Default Value],'Last Updated - 19/Apr/2018' as [Parameter Description]
+		SELECT	[Parameter Name], [Data Type], [Default Value], [Parameter Description], [Supporting Parameters]
+		FROM	(SELECT	'!~~~ Version ~~~~!' as [Parameter Name],'Information' as [Data Type],'3.7' as [Default Value],'Last Updated - 13/Mar/2019' as [Parameter Description], 'https://github.com/imajaydwivedi/Space-Capacity-Automation#space-capacity-automation' as [Supporting Parameters]
 					--
 				UNION ALL
 					--
-				SELECT	'@help' as [Parameter Name],'BIT' as [Data Type],'0' as [Default Value],'Displays this help message.' as [Parameter Description]
+				SELECT	'@help' as [Parameter Name],'BIT' as [Data Type],'0' as [Default Value],'Displays this help message.' as [Parameter Description], '' as [Supporting Parameters]
 					--
 				UNION ALL
 					--
-				SELECT	'@getInfo','BIT','0','Displays distribution of Data Files across multiple data volumes. It presents file details like database name, its file groups, db status, logical name and autogrowth setting, and volume details like free space and total space.'
+				SELECT	'@getInfo','BIT','0','Displays distribution of Data Files across multiple data volumes. It presents file details like database name, its file groups, db status, logical name and autogrowth setting, and volume details like free space and total space.', '@DBs2Consider, @verbose' as [Supporting Parameters]
 					--
 				UNION ALL
 					--
-				SELECT	'@volumeInfo','BIT','0','Displays Total size, Used Space, Free Space and percentage for all Volumes/disk drives.'
+				SELECT	'@volumeInfo','BIT','0','Displays Total size, Used Space, Free Space and percentage for all Volumes/disk drives.', '@verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@getLogInfo','BIT','0','Displays distribution of Log Files across multiple log volumes. It presents log file details like database name, db status, logical name, size, VLF counts and autogrowth setting, and volume details like free space and total space.'
+				SELECT	'@getLogInfo','BIT','0','Displays distribution of Log Files across multiple log volumes. It presents log file details like database name, db status, logical name, size, VLF counts and autogrowth setting, and volume details like free space and total space.', '@DBs2Consider, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@addDataFiles','BIT','0','This generates TSQL code for adding data files on @newVolume for data files present on @oldVolume for each combination of database and filegroup.'
+				SELECT	'@addDataFiles','BIT','0','This generates TSQL code for adding data files on @newVolume for data files present on @oldVolume for each combination of database and filegroup.', '@newVolume, @oldVolume, @DBs2Consider, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@addLogFiles','BIT','0','This generates TSQL code for adding log files on @newVolume for log files present on @oldVolume for each database.'
+				SELECT	'@addLogFiles','BIT','0','This generates TSQL code for adding log files on @newVolume for log files present on @oldVolume for each database.', '@newVolume, @oldVolume, @DBs2Consider, @allowMultiVolumeUnrestrictedFiles, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@restrictDataFileGrowth','BIT','0','This generates TSQL code for restricting growth of Data files on @oldVolume.'
+				SELECT	'@optimizeLogFiles','BIT','0','This generates TSQL code for removing High VLF counts from Log files.', '@vlfCountThreshold, @DBs2Consider, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@restrictLogFileGrowth','BIT','0','This generates TSQL code for restricting growth of Log files on @oldVolume.'
+				SELECT	'@restrictDataFileGrowth','BIT','0','This generates TSQL code for restricting growth of Data files on @oldVolume.', '@oldVolume, @DBs2Consider, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@generateCapacityException','BIT','0','This generates TSQL code for adding capacity exception on MNA alerting database server for @oldVolume.'
+				SELECT	'@restrictLogFileGrowth','BIT','0','This generates TSQL code for restricting growth of Log files on @oldVolume.', '@oldVolume, @DBs2Consider, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@unrestrictFileGrowth','BIT','0','This generates TSQL code for removing the growth restrict for data/log files on @oldVolume.'
+				SELECT	'@generateCapacityException','BIT','0','This generates TSQL code for adding capacity exception on MNA alerting database server for @oldVolume.', '@oldVolume' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@removeCapacityException','BIT','0','This generates TSQL code for removing the added capacity exception on MNA alerting database server for @oldVolume.'
+				SELECT	'@unrestrictFileGrowth','BIT','0','This generates TSQL code for removing the growth restrict for data/log files on @oldVolume.', '@oldVolume, @DBs2Consider, @forceExecute' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@UpdateMountPointSecurity','BIT','0','This prints directions on how to update access for sql service account on @newVolume.'
+				SELECT	'@removeCapacityException','BIT','0','This generates TSQL code for removing the added capacity exception on MNA alerting database server for @oldVolume.', '@oldVolume' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@restrictMountPointGrowth','BIT','0','This generates TSQL code for expanding/shrinking files upto @mountPointGrowthRestrictionPercent % of total volume capacity.'
+				SELECT	'@UpdateMountPointSecurity','BIT','0','This prints directions on how to update access for sql service account on @newVolume.', '' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@expandTempDBSize','BIT','0','This generates TSQL code for expanding tempdb data files upto @tempDBMountPointPercent % of total tempdb volume capacity.'
+				SELECT	'@restrictMountPointGrowth','BIT','0','This generates TSQL code for expanding/shrinking files upto @mountPointGrowthRestrictionPercent % of total volume capacity.', '@oldVolume, @mountPointGrowthRestrictionPercent, @DBs2Consider, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@getVolumeSpaceConsumers','BIT','0','This gives all files and folders with details like Owner, Size, Created Date, Updated By etc for @oldVolume.'
+				SELECT	'@expandTempDBSize','BIT','0','This generates TSQL code for expanding tempdb data files upto @tempDBMountPointPercent % of total tempdb volume capacity.', '@tempDBMountPointPercent, @tempDbMaxSizeThresholdInGB, @output4IdealScenario, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@newVolume','VARCHAR(50)',NULL,'Name of the new Volume where data/log files are to be added.'
+				SELECT	'@getVolumeSpaceConsumers','BIT','0','This gives all files and folders with details like Owner, Size, Created Date, Updated By etc for @oldVolume.', '@oldVolume, @sortBySize' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@oldVolume','VARCHAR(50)',NULL,'Name of the old Volume where data/log files growth is to be restricted.'
+				SELECT	'@newVolume','VARCHAR(50)',NULL,'Name of the new Volume where data/log files are to be added.', NULL as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@mountPointGrowthRestrictionPercent','TINYINT','79','Threshold value in percentage for restricting data/log files on @oldVolume. It will either increase initial size, or shrink the files based on current space occupied.'
+				SELECT	'@oldVolume','VARCHAR(50)',NULL,'Name of the old Volume where data/log files growth is to be restricted.', NULL as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@tempDBMountPointPercent','TINYINT','79','Threshold value in percentage for restricting tempdb data files on @oldVolume. This will be used with @expandTempDBSize parameter to re-size the tempdb files if space is added on volume.'
-				--
-				UNION ALL
-				--
-				SELECT	'@tempDbMaxSizeThresholdInGB','INT','16','Threshold value for total size of all data files of tempdb database.'
-				--
-				UNION ALL
-				--
-				SELECT	'@DBs2Consider','VARCHAR(1000)',NULL,'Comma (,) separated database names to filter the result set action'
+				SELECT	'@mountPointGrowthRestrictionPercent','TINYINT','79','Threshold value in percentage for restricting data/log files on @oldVolume. It will either increase initial size, or shrink the files based on current space occupied.', NULL as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@mountPointFreeSpaceThreshold_GB','INT','60','Threshold value of free space in GB on @oldVolume after which new data/log files to be on @newVolume.'
+				SELECT	'@tempDBMountPointPercent','TINYINT','79','Threshold value in percentage for restricting tempdb data files on @oldVolume. This will be used with @expandTempDBSize parameter to re-size the tempdb files if space is added on volume.', NULL as [Supporting Parameters]
+				--
+				UNION ALL
+				--
+				SELECT	'@tempDbMaxSizeThresholdInGB','INT','16','Threshold value for total size of all data files of tempdb database.', NULL as [Supporting Parameters]
+				--
+				UNION ALL
+				--
+				SELECT	'@DBs2Consider','VARCHAR(1000)',NULL,'Comma (,) separated database names to filter the result set action', NULL as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@verbose','BIT','0','Used for debugging procedure. It will display temp table results created in background for analyzing issues/logic.'
+				SELECT	'@mountPointFreeSpaceThreshold_GB','INT','60','Threshold value of free space in GB on @oldVolume after which new data/log files to be on @newVolume.', NULL as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@testAllOptions','BIT','0','Used for debugging procedure. It will test all parameter options for procedure.'
+				SELECT	'@verbose','BIT','0','Used for debugging procedure. It will display temp table results created in background for analyzing issues/logic.', NULL as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@forceExecute','BIT','0','When set to 1, will execute the TSQL Code generated by main parameter options like @addDataFiles, @addLogFiles, @restrictDataFileGrowth, @restrictLogFileGrowth, @unrestrictFileGrowth, @restrictMountPointGrowth and @expandTempDBSize.'
+				SELECT	'@testAllOptions','BIT','0','Used for debugging procedure. It will test all parameter options for procedure.', NULL as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@allowMultiVolumeUnrestrictedFiles','BIT','0','All creation of multiple data/log files with unrestricted growth on multiple volumes.'
+				SELECT	'@forceExecute','BIT','0','When set to 1, will execute the TSQL Code generated by main parameter options like @addDataFiles, @addLogFiles, @restrictDataFileGrowth, @restrictLogFileGrowth, @unrestrictFileGrowth, @restrictMountPointGrowth and @expandTempDBSize.', NULL as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@output4IdealScenario','BIT','0','When set to 1, will generate TSQL code to add/remove data files based on the number Logical cores on server upto 8, and delete extra data files created on non-tempdb volumes.'
-				) AS Params; --([Parameter Name], [Data Type], [Default Value], [Parameter Description]);
+				SELECT	'@allowMultiVolumeUnrestrictedFiles','BIT','0','All creation of multiple data/log files with unrestricted growth on multiple volumes.', NULL as [Supporting Parameters]
+				--
+				UNION ALL
+					--
+				SELECT	'@output4IdealScenario','BIT','0','When set to 1, will generate TSQL code to add/remove data files based on the number Logical cores on server upto 8, and delete extra data files created on non-tempdb volumes.', NULL as [Supporting Parameters]
+				--
+				UNION ALL
+				--
+				SELECT	'@vlfCountThreshold','INT','500','Threshold value of VLF counts. Only Log files with value above this threshold will be considered for @optimizeLogFiles.', NULL as [Supporting Parameters]
+				) AS Params; --([Parameter Name], [Data Type], [Default Value], [Parameter Description], [Supporting Parameters]);
 
 		PRINT	'
 	NAME
@@ -2665,6 +3156,8 @@ BEGIN
 												@restrictDataFileGrowth = { 1 | 0 } ,@oldVolume = <drive_name> [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1]
 												|
 												@restrictLogFileGrowth = { 1 | 0 } ,@oldVolume = <drive_name> [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1]
+												|
+												@optimizeLogFiles = { 1 | 0 } [,@DBs2Consider = <comma separated database names>] [,@vlfCountThreshold = <int value>] [, @forceExecute = 1];
 												|
 												@generateCapacityException = { 1 | 0 }, @oldVolume = <drive_name>
 												|
@@ -2731,25 +3224,32 @@ BEGIN
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictLogFileGrowth = 1 ,@oldVolume = ''E:\Logs\'',@forceExecute = 1
 
 		This generates TSQL Code to restrict growth of log files on @oldVolume if corresponding log files exists on @newVolume.
-	
+
 		--------------------------------------- EXAMPLE 8 ----------------------------------------------
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1 ,@oldVolume = ''E:\Logs\''
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1 ,@DBs2Consider = ''unet, Test1Db, MirrorTestDB'', @vlfCountThreshold = 1000;
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1 ,@DBs2Consider = ''unet, Test1Db, MirrorTestDB'', @vlfCountThreshold = 1000, @forceExecute = 1;
+
+		This generates TSQL code for removing High VLF counts from Log files.
+	
+		--------------------------------------- EXAMPLE 9 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @unrestrictFileGrowth = 1, @oldVolume = ''E:\Data\''
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @unrestrictFileGrowth = 1, @oldVolume = ''E:\Data\'' ,@DBs2Consider = ''unet, Test1Db, MirrorTestDB'';
 
 		This generates TSQL Code for remove Data File growth Restriction for files on @oldVolume.
 ';
 		PRINT '
-		--------------------------------------- EXAMPLE 9 ----------------------------------------------
+		--------------------------------------- EXAMPLE 10 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @generateCapacityException = 1, @oldVolume = ''E:\Data\''
 
 		This generates TSQL Code for adding Space Capacity Exception for @oldVolume.
 
-		--------------------------------------- EXAMPLE 10 ----------------------------------------------
+		--------------------------------------- EXAMPLE 11 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @UpdateMountPointSecurity = 1
 
 		This will generate Powershell command to provide Full Access on @newVolume for SQL Server service accounts.
 
-		--------------------------------------- EXAMPLE 11 ----------------------------------------------
+		--------------------------------------- EXAMPLE 12 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictMountPointGrowth = 1, @oldVolume = ''E:\Data\''
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictMountPointGrowth = 1, @oldVolume = ''E:\Data\'', @mountPointGrowthRestrictionPercent = 95
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictMountPointGrowth = 1, @oldVolume = ''E:\Data\'', @mountPointGrowthRestrictionPercent = 95, @DBs2Consider = ''CHSDB_Audit,CHSDBArchive''
@@ -2758,7 +3258,7 @@ BEGIN
 
 		This will generate TSQL Code to restrict all the files on @oldVolume such that total files size consumes upto 79% of the mount point volume.
 
-		--------------------------------------- EXAMPLE 12 ----------------------------------------------
+		--------------------------------------- EXAMPLE 13 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @expandTempDBSize = 1
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @expandTempDBSize = 1, @output4IdealScenario = 1
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @expandTempDBSize = 1, @tempDBMountPointPercent = 89
@@ -2767,19 +3267,19 @@ BEGIN
 		This generates TSQL code for expanding tempdb data files upto @tempDBMountPointPercent % of total tempdb volume capacity.
 		When @output4IdealScenario set to 1, will generate TSQL code to add/remove data files based on the number Logical cores on server upto 8, and delete extra data files created on non-tempdb volumes, and re-size TempdDB data files to occupy 89% of mount point volume.
 
-		--------------------------------------- EXAMPLE 13 ----------------------------------------------
+		--------------------------------------- EXAMPLE 14 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1
 
 		This generates TSQL code to re-size log files upto current size with objective to reduce high VLF Counts
 
-		--------------------------------------- EXAMPLE 14 ----------------------------------------------
+		--------------------------------------- EXAMPLE 15 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @getVolumeSpaceConsumers = 1, @oldVolume = ''F:\''
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @getVolumeSpaceConsumers = 1, @oldVolume = ''F:\'' ,@sortBySize = 1
 
 		This gives all files and folders including hidden items with details like Owner, Size, Created Date, Updated By etc for @oldVolume.
 		When @sortBySize is set to 1, will show only files order by their size in descending order.
 
-		--------------------------------------- EXAMPLE 15 ----------------------------------------------
+		--------------------------------------- EXAMPLE 16 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @volumeInfo = 1;
 
 		Displays Total size, Used Space, Free Space and percentage for all Volumes/disk drives.
@@ -4867,80 +5367,80 @@ USE [master];
 	IF	@testAllOptions = 1
 	BEGIN
 		PRINT	'/*	Executing 
-					EXEC tempdb..[usp_AnalyzeSpaceCapacity] 
+					EXEC [dbo].[usp_AnalyzeSpaceCapacity] 
 	*/';
 			WAITFOR DELAY '00:01';
 
 		PRINT	'/*	Executing 
-					EXEC tempdb..[usp_AnalyzeSpaceCapacity] @help = 1
+					EXEC [dbo].[usp_AnalyzeSpaceCapacity] @help = 1
 	*/';
-		EXEC tempdb..[usp_AnalyzeSpaceCapacity] @help = 1
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @help = 1
 			WAITFOR DELAY '00:01';
 
 		PRINT	'/*	Executing 
 					EXEC [dbo].[usp_AnalyzeSpaceCapacity] @getLogInfo = 1
 	*/';
-		EXEC tempdb.[dbo].[usp_AnalyzeSpaceCapacity] @getLogInfo = 1
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @getLogInfo = 1
 			WAITFOR DELAY '00:01';
 
 		PRINT	'/*	Executing 
 					EXEC [dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newVolume = ''E:\Data1\'' ,@oldVolume = ''E:\Data\''
 	*/';
-		EXEC tempdb.[dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newVolume = 'E:\Data1\' ,@oldVolume = 'E:\Data\'
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newVolume = 'E:\Data1\' ,@oldVolume = 'E:\Data\'
 			WAITFOR DELAY '00:01';
 
 		PRINT	'/*	Executing 
 					EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictDataFileGrowth = 1 ,@oldVolume = ''E:\Data\''
 	*/';
-		EXEC tempdb.[dbo].[usp_AnalyzeSpaceCapacity] @restrictDataFileGrowth = 1 ,@oldVolume = 'E:\Data\'
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictDataFileGrowth = 1 ,@oldVolume = 'E:\Data\'
 			WAITFOR DELAY '00:01';
 
 		PRINT	'/*	Executing 
 					EXEC [dbo].[usp_AnalyzeSpaceCapacity] @addLogFiles = 1 ,@newVolume = ''E:\Logs1\'' ,@oldVolume = ''E:\Logs\''
 	*/';
-		EXEC tempdb.[dbo].[usp_AnalyzeSpaceCapacity] @addLogFiles = 1 ,@newVolume = 'E:\Logs1\' ,@oldVolume = 'E:\Logs\'
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @addLogFiles = 1 ,@newVolume = 'E:\Logs1\' ,@oldVolume = 'E:\Logs\'
 			WAITFOR DELAY '00:01';
 
 		PRINT	'/*	Executing 
 					EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictLogFileGrowth = 1 ,@oldVolume = ''E:\Logs\''
 	*/';
-		EXEC tempdb.[dbo].[usp_AnalyzeSpaceCapacity] @restrictLogFileGrowth = 1 ,@oldVolume = 'E:\Logs\'
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictLogFileGrowth = 1 ,@oldVolume = 'E:\Logs\'
 			WAITFOR DELAY '00:01';
 
 		PRINT	'/*	Executing 
 					EXEC [dbo].[usp_AnalyzeSpaceCapacity] @unrestrictFileGrowth = 1, @oldVolume = ''E:\Data\''
 	*/';
-		EXEC tempdb.[dbo].[usp_AnalyzeSpaceCapacity] @unrestrictFileGrowth = 1, @oldVolume = 'E:\Data\'
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @unrestrictFileGrowth = 1, @oldVolume = 'E:\Data\'
 			WAITFOR DELAY '00:01';
 
 		PRINT	'/*	Executing 
 					EXEC [dbo].[usp_AnalyzeSpaceCapacity] @generateCapacityException = 1, @oldVolume = ''E:\Data\''
 	*/';
-		EXEC tempdb.[dbo].[usp_AnalyzeSpaceCapacity] @generateCapacityException = 1, @oldVolume = 'E:\Data\'
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @generateCapacityException = 1, @oldVolume = 'E:\Data\'
 			WAITFOR DELAY '00:01';
 
 		PRINT	'/*	Executing 
 					EXEC [dbo].[usp_AnalyzeSpaceCapacity] @UpdateMountPointSecurity = 1
 	*/';
-		EXEC tempdb.[dbo].[usp_AnalyzeSpaceCapacity] @UpdateMountPointSecurity = 1
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @UpdateMountPointSecurity = 1
 			WAITFOR DELAY '00:01';
 
 		PRINT	'/*	Executing 
 					EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictMountPointGrowth = 1, @oldVolume = ''E:\Data\'', @mountPointGrowthRestrictionPercent = 95
 	*/';
-		EXEC tempdb.[dbo].[usp_AnalyzeSpaceCapacity] @restrictMountPointGrowth = 1, @oldVolume = 'E:\Data\', @mountPointGrowthRestrictionPercent = 95
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictMountPointGrowth = 1, @oldVolume = 'E:\Data\', @mountPointGrowthRestrictionPercent = 95
 			WAITFOR DELAY '00:01';
 
 		PRINT	'/*	Executing 
 					EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictMountPointGrowth = 1, @oldVolume = ''E:\Data\'', @mountPointGrowthRestrictionPercent = 70
 	*/';
-		EXEC tempdb.[dbo].[usp_AnalyzeSpaceCapacity] @restrictMountPointGrowth = 1, @oldVolume = 'E:\Data\', @mountPointGrowthRestrictionPercent = 70
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictMountPointGrowth = 1, @oldVolume = 'E:\Data\', @mountPointGrowthRestrictionPercent = 70
 			WAITFOR DELAY '00:01';
 
 		PRINT	'/*	Executing 
 					EXEC [dbo].[usp_AnalyzeSpaceCapacity] @expandTempDBSize = 1, @tempDBMountPointPercent = 89
 	*/';
-		EXEC tempdb.[dbo].[usp_AnalyzeSpaceCapacity] @expandTempDBSize = 1, @tempDBMountPointPercent = 89
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @expandTempDBSize = 1, @tempDBMountPointPercent = 89
 			WAITFOR DELAY '00:01';
 
 	END -- End block of @testAllOptions = 1

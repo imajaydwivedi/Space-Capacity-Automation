@@ -3018,67 +3018,67 @@ ALTER DATABASE ['+@c_DBName+'] MODIFY FILE (NAME = N'''+@c_FileName+''' , FILEGR
 					--
 				UNION ALL
 					--
-				SELECT	'@help' as [Parameter Name],'BIT' as [Data Type],'0' as [Default Value],'Displays this help message.' as [Parameter Description], NULL as [Supporting Parameters]
+				SELECT	'@help' as [Parameter Name],'BIT' as [Data Type],'0' as [Default Value],'Displays this help message.' as [Parameter Description], '' as [Supporting Parameters]
 					--
 				UNION ALL
 					--
-				SELECT	'@getInfo','BIT','0','Displays distribution of Data Files across multiple data volumes. It presents file details like database name, its file groups, db status, logical name and autogrowth setting, and volume details like free space and total space.', NULL as [Supporting Parameters]
+				SELECT	'@getInfo','BIT','0','Displays distribution of Data Files across multiple data volumes. It presents file details like database name, its file groups, db status, logical name and autogrowth setting, and volume details like free space and total space.', '@DBs2Consider, @verbose' as [Supporting Parameters]
 					--
 				UNION ALL
 					--
-				SELECT	'@volumeInfo','BIT','0','Displays Total size, Used Space, Free Space and percentage for all Volumes/disk drives.', NULL as [Supporting Parameters]
+				SELECT	'@volumeInfo','BIT','0','Displays Total size, Used Space, Free Space and percentage for all Volumes/disk drives.', '@verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@getLogInfo','BIT','0','Displays distribution of Log Files across multiple log volumes. It presents log file details like database name, db status, logical name, size, VLF counts and autogrowth setting, and volume details like free space and total space.', NULL as [Supporting Parameters]
+				SELECT	'@getLogInfo','BIT','0','Displays distribution of Log Files across multiple log volumes. It presents log file details like database name, db status, logical name, size, VLF counts and autogrowth setting, and volume details like free space and total space.', '@DBs2Consider, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@addDataFiles','BIT','0','This generates TSQL code for adding data files on @newVolume for data files present on @oldVolume for each combination of database and filegroup.', NULL as [Supporting Parameters]
+				SELECT	'@addDataFiles','BIT','0','This generates TSQL code for adding data files on @newVolume for data files present on @oldVolume for each combination of database and filegroup.', '@newVolume, @oldVolume, @DBs2Consider, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@addLogFiles','BIT','0','This generates TSQL code for adding log files on @newVolume for log files present on @oldVolume for each database.', NULL as [Supporting Parameters]
+				SELECT	'@addLogFiles','BIT','0','This generates TSQL code for adding log files on @newVolume for log files present on @oldVolume for each database.', '@newVolume, @oldVolume, @DBs2Consider, @allowMultiVolumeUnrestrictedFiles, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@optimizeLogFiles','BIT','0','This generates TSQL code for removing High VLF counts from Log files.', NULL as [Supporting Parameters]
+				SELECT	'@optimizeLogFiles','BIT','0','This generates TSQL code for removing High VLF counts from Log files.', '@vlfCountThreshold, @DBs2Consider, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@restrictDataFileGrowth','BIT','0','This generates TSQL code for restricting growth of Data files on @oldVolume.', NULL as [Supporting Parameters]
+				SELECT	'@restrictDataFileGrowth','BIT','0','This generates TSQL code for restricting growth of Data files on @oldVolume.', '@oldVolume, @DBs2Consider, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@restrictLogFileGrowth','BIT','0','This generates TSQL code for restricting growth of Log files on @oldVolume.', NULL as [Supporting Parameters]
+				SELECT	'@restrictLogFileGrowth','BIT','0','This generates TSQL code for restricting growth of Log files on @oldVolume.', '@oldVolume, @DBs2Consider, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@generateCapacityException','BIT','0','This generates TSQL code for adding capacity exception on MNA alerting database server for @oldVolume.', NULL as [Supporting Parameters]
+				SELECT	'@generateCapacityException','BIT','0','This generates TSQL code for adding capacity exception on MNA alerting database server for @oldVolume.', '@oldVolume' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@unrestrictFileGrowth','BIT','0','This generates TSQL code for removing the growth restrict for data/log files on @oldVolume.', NULL as [Supporting Parameters]
+				SELECT	'@unrestrictFileGrowth','BIT','0','This generates TSQL code for removing the growth restrict for data/log files on @oldVolume.', '@oldVolume, @DBs2Consider, @forceExecute' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@removeCapacityException','BIT','0','This generates TSQL code for removing the added capacity exception on MNA alerting database server for @oldVolume.', NULL as [Supporting Parameters]
+				SELECT	'@removeCapacityException','BIT','0','This generates TSQL code for removing the added capacity exception on MNA alerting database server for @oldVolume.', '@oldVolume' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@UpdateMountPointSecurity','BIT','0','This prints directions on how to update access for sql service account on @newVolume.', NULL as [Supporting Parameters]
+				SELECT	'@UpdateMountPointSecurity','BIT','0','This prints directions on how to update access for sql service account on @newVolume.', '' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@restrictMountPointGrowth','BIT','0','This generates TSQL code for expanding/shrinking files upto @mountPointGrowthRestrictionPercent % of total volume capacity.', NULL as [Supporting Parameters]
+				SELECT	'@restrictMountPointGrowth','BIT','0','This generates TSQL code for expanding/shrinking files upto @mountPointGrowthRestrictionPercent % of total volume capacity.', '@oldVolume, @mountPointGrowthRestrictionPercent, @DBs2Consider, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@expandTempDBSize','BIT','0','This generates TSQL code for expanding tempdb data files upto @tempDBMountPointPercent % of total tempdb volume capacity.', NULL as [Supporting Parameters]
+				SELECT	'@expandTempDBSize','BIT','0','This generates TSQL code for expanding tempdb data files upto @tempDBMountPointPercent % of total tempdb volume capacity.', '@tempDBMountPointPercent, @tempDbMaxSizeThresholdInGB, @output4IdealScenario, @forceExecute, @verbose' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
-				SELECT	'@getVolumeSpaceConsumers','BIT','0','This gives all files and folders with details like Owner, Size, Created Date, Updated By etc for @oldVolume.', NULL as [Supporting Parameters]
+				SELECT	'@getVolumeSpaceConsumers','BIT','0','This gives all files and folders with details like Owner, Size, Created Date, Updated By etc for @oldVolume.', '@oldVolume, @sortBySize' as [Supporting Parameters]
 				--
 				UNION ALL
 					--
@@ -3127,6 +3127,10 @@ ALTER DATABASE ['+@c_DBName+'] MODIFY FILE (NAME = N'''+@c_FileName+''' , FILEGR
 				UNION ALL
 					--
 				SELECT	'@output4IdealScenario','BIT','0','When set to 1, will generate TSQL code to add/remove data files based on the number Logical cores on server upto 8, and delete extra data files created on non-tempdb volumes.', NULL as [Supporting Parameters]
+				--
+				UNION ALL
+				--
+				SELECT	'@vlfCountThreshold','INT','500','Threshold value of VLF counts. Only Log files with value above this threshold will be considered for @optimizeLogFiles.', NULL as [Supporting Parameters]
 				) AS Params; --([Parameter Name], [Data Type], [Default Value], [Parameter Description], [Supporting Parameters]);
 
 		PRINT	'
@@ -3152,6 +3156,8 @@ ALTER DATABASE ['+@c_DBName+'] MODIFY FILE (NAME = N'''+@c_FileName+''' , FILEGR
 												@restrictDataFileGrowth = { 1 | 0 } ,@oldVolume = <drive_name> [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1]
 												|
 												@restrictLogFileGrowth = { 1 | 0 } ,@oldVolume = <drive_name> [,@DBs2Consider = <comma separated database names>] [,@forceExecute = 1]
+												|
+												@optimizeLogFiles = { 1 | 0 } [,@DBs2Consider = <comma separated database names>] [,@vlfCountThreshold = <int value>] [, @forceExecute = 1];
 												|
 												@generateCapacityException = { 1 | 0 }, @oldVolume = <drive_name>
 												|
@@ -3218,25 +3224,32 @@ ALTER DATABASE ['+@c_DBName+'] MODIFY FILE (NAME = N'''+@c_FileName+''' , FILEGR
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictLogFileGrowth = 1 ,@oldVolume = ''E:\Logs\'',@forceExecute = 1
 
 		This generates TSQL Code to restrict growth of log files on @oldVolume if corresponding log files exists on @newVolume.
-	
+
 		--------------------------------------- EXAMPLE 8 ----------------------------------------------
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1 ,@oldVolume = ''E:\Logs\''
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1 ,@DBs2Consider = ''unet, Test1Db, MirrorTestDB'', @vlfCountThreshold = 1000;
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1 ,@DBs2Consider = ''unet, Test1Db, MirrorTestDB'', @vlfCountThreshold = 1000, @forceExecute = 1;
+
+		This generates TSQL code for removing High VLF counts from Log files.
+	
+		--------------------------------------- EXAMPLE 9 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @unrestrictFileGrowth = 1, @oldVolume = ''E:\Data\''
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @unrestrictFileGrowth = 1, @oldVolume = ''E:\Data\'' ,@DBs2Consider = ''unet, Test1Db, MirrorTestDB'';
 
 		This generates TSQL Code for remove Data File growth Restriction for files on @oldVolume.
 ';
 		PRINT '
-		--------------------------------------- EXAMPLE 9 ----------------------------------------------
+		--------------------------------------- EXAMPLE 10 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @generateCapacityException = 1, @oldVolume = ''E:\Data\''
 
 		This generates TSQL Code for adding Space Capacity Exception for @oldVolume.
 
-		--------------------------------------- EXAMPLE 10 ----------------------------------------------
+		--------------------------------------- EXAMPLE 11 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @UpdateMountPointSecurity = 1
 
 		This will generate Powershell command to provide Full Access on @newVolume for SQL Server service accounts.
 
-		--------------------------------------- EXAMPLE 11 ----------------------------------------------
+		--------------------------------------- EXAMPLE 12 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictMountPointGrowth = 1, @oldVolume = ''E:\Data\''
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictMountPointGrowth = 1, @oldVolume = ''E:\Data\'', @mountPointGrowthRestrictionPercent = 95
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @restrictMountPointGrowth = 1, @oldVolume = ''E:\Data\'', @mountPointGrowthRestrictionPercent = 95, @DBs2Consider = ''CHSDB_Audit,CHSDBArchive''
@@ -3245,7 +3258,7 @@ ALTER DATABASE ['+@c_DBName+'] MODIFY FILE (NAME = N'''+@c_FileName+''' , FILEGR
 
 		This will generate TSQL Code to restrict all the files on @oldVolume such that total files size consumes upto 79% of the mount point volume.
 
-		--------------------------------------- EXAMPLE 12 ----------------------------------------------
+		--------------------------------------- EXAMPLE 13 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @expandTempDBSize = 1
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @expandTempDBSize = 1, @output4IdealScenario = 1
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @expandTempDBSize = 1, @tempDBMountPointPercent = 89
@@ -3254,19 +3267,19 @@ ALTER DATABASE ['+@c_DBName+'] MODIFY FILE (NAME = N'''+@c_FileName+''' , FILEGR
 		This generates TSQL code for expanding tempdb data files upto @tempDBMountPointPercent % of total tempdb volume capacity.
 		When @output4IdealScenario set to 1, will generate TSQL code to add/remove data files based on the number Logical cores on server upto 8, and delete extra data files created on non-tempdb volumes, and re-size TempdDB data files to occupy 89% of mount point volume.
 
-		--------------------------------------- EXAMPLE 13 ----------------------------------------------
+		--------------------------------------- EXAMPLE 14 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1
 
 		This generates TSQL code to re-size log files upto current size with objective to reduce high VLF Counts
 
-		--------------------------------------- EXAMPLE 14 ----------------------------------------------
+		--------------------------------------- EXAMPLE 15 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @getVolumeSpaceConsumers = 1, @oldVolume = ''F:\''
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @getVolumeSpaceConsumers = 1, @oldVolume = ''F:\'' ,@sortBySize = 1
 
 		This gives all files and folders including hidden items with details like Owner, Size, Created Date, Updated By etc for @oldVolume.
 		When @sortBySize is set to 1, will show only files order by their size in descending order.
 
-		--------------------------------------- EXAMPLE 15 ----------------------------------------------
+		--------------------------------------- EXAMPLE 16 ----------------------------------------------
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @volumeInfo = 1;
 
 		Displays Total size, Used Space, Free Space and percentage for all Volumes/disk drives.
