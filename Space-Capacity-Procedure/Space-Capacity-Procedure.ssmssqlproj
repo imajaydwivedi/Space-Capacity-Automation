@@ -3,6 +3,30 @@
   <Items>
     <LogicalFolder Name="Connections" Type="2" Sorted="true">
       <Items>
+        <ConnectionNode Name="Ann1vespapp02:CORPORATE\adwivedi">
+          <Created>2019-03-13T21:30:24.41799+05:30</Created>
+          <Type>SQL</Type>
+          <Server>Ann1vespapp02</Server>
+          <UserName />
+          <Authentication>Windows Authentication</Authentication>
+          <InitialDB />
+          <LoginTimeout>30</LoginTimeout>
+          <ExecutionTimeout>0</ExecutionTimeout>
+          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
+          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
+        </ConnectionNode>
+        <ConnectionNode Name="Ann1vespdb01:CORPORATE\adwivedi">
+          <Created>2019-03-13T15:15:31.0566653+05:30</Created>
+          <Type>SQL</Type>
+          <Server>Ann1vespdb01</Server>
+          <UserName />
+          <Authentication>Windows Authentication</Authentication>
+          <InitialDB />
+          <LoginTimeout>30</LoginTimeout>
+          <ExecutionTimeout>0</ExecutionTimeout>
+          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
+          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
+        </ConnectionNode>
         <ConnectionNode Name="TUL1CIPCNPDB1:CORPORATE\adwivedi">
           <Created>2018-04-04T16:18:08.381561+05:30</Created>
           <Type>SQL</Type>
@@ -50,8 +74,8 @@
           <FullPath>v3.6 - Automation - Restrict File growth.sql</FullPath>
         </FileNode>
         <FileNode Name="v3.7 - Automation - Restrict File growth.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:TUL1CIPCNPDB1:True</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>TUL1CIPCNPDB1</AssociatedConnSrvName>
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:Ann1vespapp02:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>Ann1vespapp02</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>v3.7 - Automation - Restrict File growth.sql</FullPath>
         </FileNode>

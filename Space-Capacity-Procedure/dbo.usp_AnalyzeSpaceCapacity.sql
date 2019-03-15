@@ -17,7 +17,7 @@ AS
 BEGIN
 	/*
 		Created By:		Ajay Dwivedi
-		Updated on:		22-Mar-2018
+		Updated on:		13-Mar-2019
 		Current Ver:	3.7 - Fixed Below Issues as per MileStone v3.7 - Release of Apr 2019
 						Issue# 03) @optimizeLogFiles - Regrow Log files by Reducing High VLF Count
 		Purpose:		This procedure can be used to generate automatic TSQL code for working with ESCs like 'DBSEP1234- Data- Create and Restrict Database File Names' type.

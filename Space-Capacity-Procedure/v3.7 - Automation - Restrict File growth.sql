@@ -3,6 +3,7 @@ IF OBJECT_ID('dbo.usp_AnalyzeSpaceCapacity') IS NULL
   EXEC ('CREATE PROCEDURE dbo.usp_AnalyzeSpaceCapacity AS RETURN 0;')
 GO
 --	EXEC [dbo].[usp_AnalyzeSpaceCapacity] @help = 1
+--	EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1 ,@DBs2Consider = 'VestaMusicProcessing' ,@verbose = 1
 /*	
 DECLARE	@_errorOccurred BIT; 
 EXEC @_errorOccurred = [dbo].[usp_AnalyzeSpaceCapacity] @addDataFiles = 1 ,@newVolume = 'E:\Data6\' ,@oldVolume = 'E:\Data5\' 
@@ -17,7 +18,7 @@ AS
 BEGIN
 	/*
 		Created By:		Ajay Dwivedi
-		Updated on:		22-Mar-2018
+		Updated on:		13-Mar-2019
 		Current Ver:	3.7 - Fix Below Issues as per MileStone v3.7 - Release of Apr 2019
 						Issue# 03) @optimizeLogFiles - Regrow Log files by Reducing High VLF Count
 		Purpose:		This procedure can be used to generate automatic TSQL code for working with ESCs like 'DBSEP1234- Data- Create and Restrict Database File Names' type.
@@ -3226,7 +3227,7 @@ ALTER DATABASE ['+@c_DBName+'] MODIFY FILE (NAME = N'''+@c_FileName+''' , FILEGR
 		This generates TSQL Code to restrict growth of log files on @oldVolume if corresponding log files exists on @newVolume.
 
 		--------------------------------------- EXAMPLE 8 ----------------------------------------------
-		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1 ,@oldVolume = ''E:\Logs\''
+		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1;
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1 ,@DBs2Consider = ''unet, Test1Db, MirrorTestDB'', @vlfCountThreshold = 1000;
 		EXEC [dbo].[usp_AnalyzeSpaceCapacity] @optimizeLogFiles = 1 ,@DBs2Consider = ''unet, Test1Db, MirrorTestDB'', @vlfCountThreshold = 1000, @forceExecute = 1;
 
